@@ -27,8 +27,9 @@ export default function StudyStartScreen() {
   return (
     <View style={styles.screen}>
       <Image source={require('@/assets/images/backgrounds/home-hero.png')} style={styles.hero} contentFit="cover" />
-      <View style={[styles.heroText, { top: insets.top + 24 }]}>
-        <Text style={styles.title}>마음쉼</Text>
+      <View style={[styles.heroText, { top: Math.max(insets.top, 70) }]}>
+        {/* 홈(HM-01)과 같은 haebo 로고 */}
+        <Image source={require('@/assets/images/logo/haebo-wordmark.svg')} style={styles.logo} contentFit="contain" />
         <Text style={styles.subtitle}>{'일단 펼쳐볼까?\n우리도 같이 할게'}</Text>
       </View>
 
@@ -75,15 +76,15 @@ const styles = StyleSheet.create({
   },
   heroText: {
     position: 'absolute',
-    left: 24,
+    left: 16,
   },
-  title: {
-    fontFamily: fonts.titleBold,
-    fontSize: 32,
-    color: colors.text,
+  logo: {
+    width: 148,
+    height: 54,
   },
   subtitle: {
-    marginTop: 4,
+    marginTop: 6,
+    marginLeft: 8,
     fontFamily: fonts.title,
     fontSize: fontSize.md,
     color: colors.text,
