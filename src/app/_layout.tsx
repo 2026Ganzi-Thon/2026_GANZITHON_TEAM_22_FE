@@ -1,5 +1,6 @@
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import Head from 'expo-router/head';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -37,6 +38,11 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.page}>
+      {/* 웹 브라우저 탭 제목 */}
+      <Head>
+        <title>HAEBOYANG</title>
+        <meta name="description" content="마음쉼 TASK — 감정콩 친구들과 함께 공부를 시작하는 앱" />
+      </Head>
       {/* 웹에서는 넓은 화면에서도 폰 크기로 가운데 보여준다 */}
       <View style={styles.app}>
         {fontsLoaded && <Stack screenOptions={{ headerShown: false }} />}
