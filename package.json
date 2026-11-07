@@ -44,7 +44,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "deploy": "npx expo export -p web && wrangler deploy",
+    "deploy": "node scripts/check-main.js && npx expo export -p web && wrangler deploy",
     "preview": "npx expo export -p web && wrangler dev"
   },
   "private": true

@@ -139,6 +139,7 @@ Expo Go에서는 스플래시 대신 Expo 화면이 먼저 보인다. 실제 스
 
 ```bash
 npx wrangler login   # 처음 한 번 (Cloudflare 계정 로그인)
+git switch main      # 배포는 main 브랜치에서만 가능
 npm run deploy       # 웹 빌드(dist/) 후 Cloudflare에 배포
 ```
 
@@ -162,7 +163,8 @@ npm run deploy       # 웹 빌드(dist/) 후 Cloudflare에 배포
 
 ### 브랜치·커밋
 
-- 브랜치: `main`(배포) / `develop`(통합). 작업은 `develop`에 반영한다.
+- 브랜치: `main`(배포) / `develop`(통합). 작업은 `develop`에 반영하고, 확인이 끝나면 `main`에 합친 뒤 배포한다.
+- 배포 사이트에는 항상 `main` 코드만 올라간다 (`npm run deploy`는 `main`에서만 실행된다).
 - 커밋: `type: 설명` — `feat`, `fix`, `docs`, `style`, `refactor`, `chore`
 - 커밋은 기능 단위로 나눈다. 여러 기능을 한 커밋에 섞지 않는다.
 
