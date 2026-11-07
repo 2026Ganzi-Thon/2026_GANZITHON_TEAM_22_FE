@@ -133,12 +133,16 @@ npm install   # 처음 한 번
 
 Expo Go에서는 스플래시 대신 Expo 화면이 먼저 보인다. 실제 스플래시·앱 아이콘은 개발용 빌드(EAS)에서 확인한다.
 
-### 웹 배포 (Cloudflare Pages)
+### 웹 배포 (Cloudflare)
+
+배포 주소: https://haeboyang.anhs-0218.workers.dev
 
 ```bash
-npx expo export --platform web            # dist/ 폴더 생성
-npx wrangler pages deploy dist --project-name haeboyang
+npx wrangler login   # 처음 한 번 (Cloudflare 계정 로그인)
+npm run deploy       # 웹 빌드(dist/) 후 Cloudflare에 배포
 ```
+
+설정은 `wrangler.jsonc`에 있다. 새로고침이나 주소 직접 입력도 앱이 처리하도록 되어 있다.
 
 시연은 웹 링크를 기본으로 하고, 앱은 Expo Go로 보여준다. 웹 카메라는 HTTPS 주소에서만 동작한다.
 
