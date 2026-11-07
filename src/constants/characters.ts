@@ -1,9 +1,7 @@
 import { colors } from '@/constants/theme';
 
-// 스터디룸 영상 (assets/videos/). 파일이 들어오면 require로 바꾼다. null이면 이미지로 대신 보여준다
-// TODO(asset): 피그마 mp4 → assets/videos/{angry,sad,joy}-{study,rest}.mp4
-type VideoPair = { study: number | null; rest: number | null };
-const NO_VIDEO: VideoPair = { study: null, rest: null };
+// 스터디룸 공부 영상 (assets/videos/, H.264 540x960). 쉬는 영상은 아직 없어서 쉬는 중엔 이미지를 보여준다
+type CharacterVideo = { study: number | null; rest: number | null };
 
 // 감정콩 3명. 화면에서는 id로만 부르고 이름·색·이미지는 여기서 가져온다
 export const CHARACTERS = {
@@ -14,7 +12,7 @@ export const CHARACTERS = {
     profile: require('@/assets/images/characters/profile/angry.png'),
     study: require('@/assets/images/characters/study/angry-study.jpg'),
     rest: require('@/assets/images/characters/study/angry-rest.jpg'),
-    video: NO_VIDEO,
+    video: { study: require('@/assets/videos/angry-study.mp4'), rest: null } as CharacterVideo,
   },
   sad: {
     name: '슬픔이',
@@ -23,7 +21,7 @@ export const CHARACTERS = {
     profile: require('@/assets/images/characters/profile/sad.png'),
     study: require('@/assets/images/characters/study/sad-study.jpg'),
     rest: require('@/assets/images/characters/study/sad-rest.jpg'),
-    video: NO_VIDEO,
+    video: { study: require('@/assets/videos/sad-study.mp4'), rest: null } as CharacterVideo,
   },
   joy: {
     name: '기쁨이',
@@ -32,7 +30,7 @@ export const CHARACTERS = {
     profile: require('@/assets/images/characters/profile/joy.png'),
     study: require('@/assets/images/characters/study/joy-study.jpg'),
     rest: require('@/assets/images/characters/study/joy-rest.jpg'),
-    video: NO_VIDEO,
+    video: { study: require('@/assets/videos/joy-study.mp4'), rest: null } as CharacterVideo,
   },
 } as const;
 

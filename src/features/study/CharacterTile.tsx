@@ -17,8 +17,8 @@ export default function CharacterTile({ id, resting, bubble }: Props) {
   const c = CHARACTERS[id];
   return (
     <View style={styles.tile}>
-      {c.video.study && c.video.rest ? (
-        <CharacterVideo study={c.video.study} rest={c.video.rest} resting={resting} />
+      {c.video.study ? (
+        <CharacterVideo study={c.video.study} restImage={c.rest} resting={resting} />
       ) : (
         <Image source={resting ? c.rest : c.study} style={StyleSheet.absoluteFill} contentFit="cover" />
       )}
