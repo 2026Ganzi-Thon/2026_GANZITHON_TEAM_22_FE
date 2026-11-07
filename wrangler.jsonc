@@ -1,0 +1,10 @@
+// Cloudflare 웹 배포 설정. `npx expo export --platform web`으로 만든 dist/를 그대로 올린다.
+{
+  "name": "haeboyang",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    // 새로고침·직접 접속한 주소(/task/1 등)도 앱이 처리하도록 index.html로 돌린다
+    "not_found_handling": "single-page-application"
+  }
+}
