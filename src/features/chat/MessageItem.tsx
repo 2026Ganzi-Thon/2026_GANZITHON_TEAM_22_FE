@@ -21,7 +21,7 @@ export default function MessageItem({ message }: { message: ChatMessage }) {
       <View style={styles.body}>
         <Text style={styles.name}>{c.name}</Text>
         <View style={styles.bubble}>
-          <Text style={styles.text}>{message.text}</Text>
+          <Text style={[styles.text, message.pending && styles.pending]}>{message.pending ? '…' : message.text}</Text>
         </View>
       </View>
     </View>
@@ -63,5 +63,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 14,
     color: colors.text,
+  },
+  pending: {
+    color: colors.textMuted,
+    letterSpacing: 2,
   },
 });
