@@ -8,6 +8,7 @@ import Icon from '@/components/common/Icon';
 import { colors, fonts, fontSize, radius } from '@/constants/theme';
 import TaskCard from '@/features/tasks/TaskCard';
 import { taskActions, useMockStore } from '@/mocks/store';
+import { isDone } from '@/types/task';
 
 type Tab = 'doing' | 'done';
 
@@ -16,7 +17,7 @@ export default function TasksScreen() {
   const { tasks } = useMockStore();
   const [tab, setTab] = useState<Tab>('doing');
   // TODO(API): 탭별 목록 조회. 순서 변경(길게 눌러 위아래)은 기능 구현 때 추가
-  const list = tasks.filter((t) => (tab === 'done' ? t.done : !t.done));
+  const list = tasks.filter((t) => (tab === 'done' ? isDone(t) : !isDone(t)));
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 16 }]}>

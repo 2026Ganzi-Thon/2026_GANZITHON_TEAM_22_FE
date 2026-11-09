@@ -9,6 +9,7 @@ import SubtaskRow from '@/features/tasks/SubtaskRow';
 import TaskTitleBox from '@/features/tasks/TaskTitleBox';
 import { studyActions, useStudySession } from '@/hooks/useStudySession';
 import { taskActions, useMockStore } from '@/mocks/store';
+import { isDone } from '@/types/task';
 import { formatMonthDayTime } from '@/utils/date';
 
 // 이 화면을 열어도 공부 시간은 그대로 흐른다 (명세 ST-03 ①)
@@ -23,10 +24,10 @@ export default function StudyTodoScreen() {
         <>
           <SectionTitle title="지금 하는 일" size="lg" right={task.dueAt && formatMonthDayTime(task.dueAt)} />
           <TaskTitleBox title={task.title} />
-          {task.subTasks.length > 0 && <SectionTitle title="세부 할 일" />}
+          {task.subtasks.length > 0 && <SectionTitle title="세부 할 일" />}
           <View style={styles.list}>
-            {task.subTasks.map((s) => (
-              <SubtaskRow key={s.id} title={s.title} done={s.done} onToggle={() => taskActions.toggleSub(task.id, s.id)} />
+            {task.subtasks.map((s) => (
+              <SubtaskRow key={s.id} title={s.title} done={isDone(s)} onToggle={() => taskActions.toggleSub(task.id, s.id)} />
             ))}
           </View>
         </>
@@ -37,7 +38,7 @@ export default function StudyTodoScreen() {
           <View style={styles.list}>
             {/* TODO(API): 미완료 할 일 목록 */}
             {tasks
-              .filter((t) => !t.done)
+              .filter((t) => !isDone(t))
               .map((t) => (
                 <Pressable key={t.id} accessibilityRole="button" onPress={() => studyActions.linkTask(t.id)} style={styles.pick}>
                   <Text style={styles.pickText}>{t.title}</Text>

@@ -11,6 +11,7 @@ import { colors, fonts, fontSize } from '@/constants/theme';
 import SubtaskRow from '@/features/tasks/SubtaskRow';
 import TaskTitleBox from '@/features/tasks/TaskTitleBox';
 import { taskActions, useMockStore } from '@/mocks/store';
+import { isDone } from '@/types/task';
 import { formatDotDateTime } from '@/utils/date';
 import { goBack } from '@/utils/navigation';
 
@@ -30,7 +31,7 @@ export default function TaskDetailScreen() {
 
   // TODO(API): 완료 처리 / 삭제 요청 (연결된 예약 알림도 취소)
   const complete = () => {
-    taskActions.update(task.id, { done: true });
+    taskActions.update(task.id, { status: 'DONE' });
     goBack();
   };
   const remove = () => {
@@ -53,17 +54,17 @@ export default function TaskDetailScreen() {
   return (
     <Screen header={<Header backLabel="홈" right={right} />}>
       <SectionTitle title="할 일" size="lg" right={task.dueAt && formatDotDateTime(task.dueAt)} />
-      <TaskTitleBox title={task.title} dueAt={task.done ? undefined : task.dueAt} />
+      <TaskTitleBox title={task.title} dueAt={isDone(task) ? undefined : task.dueAt} />
 
-      {task.subTasks.length > 0 && (
+      {task.subtasks.length > 0 && (
         <>
           <SectionTitle title="세부 할 일" />
           <View style={styles.subList}>
-            {task.subTasks.map((s) => (
+            {task.subtasks.map((s) => (
               <SubtaskRow
                 key={s.id}
                 title={s.title}
-                done={s.done}
+                done={isDone(s)}
                 onToggle={() => taskActions.toggleSub(task.id, s.id)}
               />
             ))}

@@ -8,7 +8,7 @@ import TaskForm, { type TaskFormValue } from '@/features/tasks/TaskForm';
 import { taskActions } from '@/mocks/store';
 
 export default function TaskNewScreen() {
-  const [value, setValue] = useState<TaskFormValue>({ title: '', subTasks: [] });
+  const [value, setValue] = useState<TaskFormValue>({ title: '', subtasks: [] });
 
   // TODO(API): 할 일 생성 요청. 성공하면 추가 완료 화면(HM-03-done)으로
   const submit = () => {
@@ -16,7 +16,7 @@ export default function TaskNewScreen() {
     const task = taskActions.create({
       title: value.title.trim(),
       dueAt: value.dueAt,
-      subTasks: value.subTasks.map((s) => s.title.trim()),
+      subtasks: value.subtasks.map((s) => s.title.trim()),
     });
     router.replace({ pathname: '/task/[id]', params: { id: task.id, created: '1' } });
   };

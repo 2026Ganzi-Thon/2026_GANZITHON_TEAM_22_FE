@@ -13,39 +13,39 @@ export const MOCK_TASKS: Task[] = [
     id: '1',
     title: '머신러닝 과제',
     dueAt: inDays(1),
-    done: false,
-    subTasks: [
-      { id: '1-1', title: '보고서 작성', done: false },
-      { id: '1-2', title: '코드 작성', done: false },
+    status: 'TODO',
+    subtasks: [
+      { id: '1-1', title: '보고서 작성', status: 'TODO' },
+      { id: '1-2', title: '코드 작성', status: 'TODO' },
     ],
   },
   {
     id: '2',
     title: '컴퓨터구조 복습',
-    done: false,
-    subTasks: [
-      { id: '2-1', title: '캐시 메모리 개념 정리', done: false },
+    status: 'TODO',
+    subtasks: [
+      { id: '2-1', title: '캐시 메모리 개념 정리', status: 'TODO' },
     ],
   },
   {
     id: '3',
     title: '영어 발표 준비',
     dueAt: inDays(4, 18, 0),
-    done: false,
-    subTasks: [],
+    status: 'TODO',
+    subtasks: [],
   },
   {
     id: '4',
     title: '자료구조 퀴즈 공부',
     dueAt: inDays(6, 10, 0),
-    done: false,
-    subTasks: [{ id: '4-1', title: '트리 순회 정리', done: false }],
+    status: 'TODO',
+    subtasks: [{ id: '4-1', title: '트리 순회 정리', status: 'TODO' }],
   },
   {
     id: '5',
     title: '운영체제 복습',
-    done: false,
-    subTasks: [],
+    status: 'TODO',
+    subtasks: [],
   },
 ];
 
@@ -53,4 +53,6 @@ export const MOCK_TASKS: Task[] = [
 export const MOCK_REMINDER: Reminder | null = {
   id: 'r1',
   remindAt: inDays(0, 20, 0),
+  timeZone: 'Asia/Seoul',
+  status: 'ACTIVE',
 };

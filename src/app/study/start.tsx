@@ -10,12 +10,13 @@ import Button from '@/components/common/Button';
 import { colors, fonts, fontSize, radius } from '@/constants/theme';
 import { studyActions } from '@/hooks/useStudySession';
 import { useMockStore } from '@/mocks/store';
+import { isDone } from '@/types/task';
 import { formatDday, formatMonthDayTime } from '@/utils/date';
 
 export default function StudyStartScreen() {
   const insets = useSafeAreaInsets();
   // TODO(API): 미완료 할 일 목록 조회
-  const tasks = useMockStore().tasks.filter((t) => !t.done);
+  const tasks = useMockStore().tasks.filter((t) => !isDone(t));
   const [selectedId, setSelectedId] = useState<string>();
 
   // 할 일 선택 없이도 시작할 수 있다 (명세 ST-01)

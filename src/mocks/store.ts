@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { MOCK_REMINDER, MOCK_TASKS } from '@/mocks/tasks';
-import type { Reminder, SubTask, Task } from '@/types/task';
+import { toggleStatus, type Reminder, type Subtask, type Task } from '@/types/task';
 
 // 화면끼리 같은 데이터를 보도록 메모리에만 두는 임시 저장소.
 // TODO(API): 이 파일 전체를 API 호출(조회·생성·수정·삭제)로 교체. 앱을 끄면 초기화된다.
@@ -49,13 +49,13 @@ let nextId = 100;
 export const newId = () => String(nextId++);
 
 export const taskActions = {
-  create(input: { title: string; dueAt?: string; subTasks: string[] }) {
+  create(input: { title: string; dueAt?: string; subtasks: string[] }) {
     const task: Task = {
       id: newId(),
       title: input.title,
       dueAt: input.dueAt,
-      done: false,
-      subTasks: input.subTasks.filter(Boolean).map((title) => ({ id: newId(), title, done: false })),
+      status: 'TODO',
+      subtasks: input.subtasks.filter(Boolean).map((title) => ({ id: newId(), title, status: 'TODO' })),
     };
     setState({ tasks: [...state.tasks, task] });
     return task;
@@ -67,13 +67,13 @@ export const taskActions = {
     setState({ tasks: state.tasks.filter((t) => t.id !== id) });
   },
   toggle(id: string) {
-    setState({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) });
+    setState({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, status: toggleStatus(t.status) } : t)) });
   },
   toggleSub(id: string, subId: string) {
     setState({
       tasks: state.tasks.map((t) =>
         t.id === id
-          ? { ...t, subTasks: t.subTasks.map((s: SubTask) => (s.id === subId ? { ...s, done: !s.done } : s)) }
+          ? { ...t, subtasks: t.subtasks.map((s: Subtask) => (s.id === subId ? { ...s, status: toggleStatus(s.status) } : s)) }
           : t,
       ),
     });
@@ -82,7 +82,7 @@ export const taskActions = {
 
 export const reminderActions = {
   set(remindAt: string) {
-    setState({ reminder: { id: state.reminder?.id ?? newId(), remindAt } });
+    setState({ reminder: { id: state.reminder?.id ?? newId(), remindAt, timeZone: 'Asia/Seoul', status: 'ACTIVE' } });
   },
   cancel() {
     setState({ reminder: null });

@@ -8,12 +8,13 @@ import SectionTitle from '@/components/common/SectionTitle';
 import TextField from '@/components/common/TextField';
 import SubtaskRow from '@/features/tasks/SubtaskRow';
 import { newId } from '@/mocks/store';
+import { isDone, toggleStatus, type Subtask } from '@/types/task';
 import { formatFullDateTime } from '@/utils/date';
 
 export type TaskFormValue = {
   title: string;
   dueAt?: string;
-  subTasks: { id: string; title: string; done: boolean }[];
+  subtasks: Subtask[];
 };
 
 type Props = {
@@ -27,8 +28,8 @@ type Props = {
 export default function TaskForm({ value, onChange, mode }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const set = (patch: Partial<TaskFormValue>) => onChange({ ...value, ...patch });
-  const setSub = (id: string, patch: Partial<TaskFormValue['subTasks'][number]>) =>
-    set({ subTasks: value.subTasks.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
+  const setSub = (id: string, patch: Partial<Subtask>) =>
+    set({ subtasks: value.subtasks.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 
   return (
     <>
@@ -49,22 +50,22 @@ export default function TaskForm({ value, onChange, mode }: Props) {
 
       <SectionTitle title="세부 할 일" hint={mode === 'add' ? '(선택)' : undefined} />
       <View style={styles.subList}>
-        {value.subTasks.map((s) => (
+        {value.subtasks.map((s) => (
           <SubtaskRow
             key={s.id}
             title={s.title}
-            done={s.done}
-            onToggle={() => setSub(s.id, { done: !s.done })}
+            done={isDone(s)}
+            onToggle={() => setSub(s.id, { status: toggleStatus(s.status) })}
             editable
             placeholder="일을 작게 쪼개보자!"
             onChangeTitle={(title) => setSub(s.id, { title })}
-            onRemove={() => set({ subTasks: value.subTasks.filter((x) => x.id !== s.id) })}
+            onRemove={() => set({ subtasks: value.subtasks.filter((x) => x.id !== s.id) })}
           />
         ))}
       </View>
       <DashedAddButton
         label="세부 할 일 추가"
-        onPress={() => set({ subTasks: [...value.subTasks, { id: newId(), title: '', done: false }] })}
+        onPress={() => set({ subtasks: [...value.subtasks, { id: newId(), title: '', status: 'TODO' }] })}
       />
 
       <DateTimeSheet

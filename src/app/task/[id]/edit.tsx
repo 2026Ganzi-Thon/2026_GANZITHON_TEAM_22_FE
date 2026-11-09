@@ -14,7 +14,7 @@ export default function TaskEditScreen() {
   const [value, setValue] = useState<TaskFormValue>({
     title: task?.title ?? '',
     dueAt: task?.dueAt,
-    subTasks: task?.subTasks ?? [],
+    subtasks: task?.subtasks ?? [],
   });
 
   // TODO(API): 할 일 수정 요청
@@ -23,7 +23,7 @@ export default function TaskEditScreen() {
     taskActions.update(task.id, {
       title: value.title.trim(),
       dueAt: value.dueAt,
-      subTasks: value.subTasks.filter((s) => s.title.trim()),
+      subtasks: value.subtasks.filter((s) => s.title.trim()),
     });
     goBack();
   };
