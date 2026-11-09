@@ -7,9 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CroppedImage from '@/components/common/CroppedImage';
 import Toggle from '@/components/common/Toggle';
 import { colors, fonts, fontSize } from '@/constants/theme';
-
-// TODO(API): 내 정보 조회 (닉네임, 아이디)
-const ME = { nickname: '박민경', handle: '@jisoo_k' };
+import { MOCK_ME as ME } from '@/mocks/me';
 
 export default function MyScreen() {
   const insets = useSafeAreaInsets();
