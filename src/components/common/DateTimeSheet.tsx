@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import BottomSheet from '@/components/common/BottomSheet';
 import Calendar from '@/components/common/Calendar';
 import { colors, fonts, fontSize, radius } from '@/constants/theme';
-import { formatKoreanDateTime } from '@/utils/date';
+import { formatKoreanDate, formatKoreanDateTime } from '@/utils/date';
 
 type Props = {
   visible: boolean;
@@ -15,6 +15,7 @@ type Props = {
   subtitle?: string;
   confirmLabel: string;
   initial?: string;
+  includeTime?: boolean;
   onConfirm: (iso: string) => void;
 };
 
@@ -30,7 +31,7 @@ export default function DateTimeSheet({ visible, onClose, ...rest }: Props) {
   );
 }
 
-function Picker({ title, subtitle, confirmLabel, initial, onConfirm }: Omit<Props, 'visible' | 'onClose'>) {
+function Picker({ title, subtitle, confirmLabel, initial, includeTime = true, onConfirm }: Omit<Props, 'visible' | 'onClose'>) {
   const [date, setDate] = useState(() => (initial ? new Date(initial) : new Date()));
   const [month, setMonth] = useState(() => new Date(date.getFullYear(), date.getMonth(), 1));
   const [hourText, setHourText] = useState(pad(date.getHours() % 12 || 12));
@@ -39,7 +40,13 @@ function Picker({ title, subtitle, confirmLabel, initial, onConfirm }: Omit<Prop
 
   const hour12 = Math.min(Math.max(Number(hourText) || 12, 1), 12);
   const minute = Math.min(Math.max(Number(minuteText) || 0, 0), 59);
-  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate(), (hour12 % 12) + (pm ? 12 : 0), minute);
+  const result = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    includeTime ? (hour12 % 12) + (pm ? 12 : 0) : 0,
+    includeTime ? minute : 0,
+  );
 
   return (
     <>
@@ -48,30 +55,34 @@ function Picker({ title, subtitle, confirmLabel, initial, onConfirm }: Omit<Prop
 
       <Calendar month={month} selected={date} onChangeMonth={setMonth} onSelect={setDate} />
 
-      <Text style={styles.label}>시간</Text>
-      <View style={styles.timeRow}>
-        <Pressable accessibilityRole="button" onPress={() => setPm((v) => !v)} style={styles.pill}>
-          <Text style={styles.pillText}>{pm ? '오후' : '오전'}</Text>
-        </Pressable>
-        <TextInput
-          value={hourText}
-          onChangeText={setHourText}
-          keyboardType="number-pad"
-          maxLength={2}
-          style={[styles.pill, styles.pillText, styles.input]}
-        />
-        <Text style={styles.colon}>:</Text>
-        <TextInput
-          value={minuteText}
-          onChangeText={setMinuteText}
-          keyboardType="number-pad"
-          maxLength={2}
-          style={[styles.pill, styles.pillText, styles.input]}
-        />
-      </View>
+      {includeTime && (
+        <>
+          <Text style={styles.label}>시간</Text>
+          <View style={styles.timeRow}>
+            <Pressable accessibilityRole="button" onPress={() => setPm((v) => !v)} style={styles.pill}>
+              <Text style={styles.pillText}>{pm ? '오후' : '오전'}</Text>
+            </Pressable>
+            <TextInput
+              value={hourText}
+              onChangeText={setHourText}
+              keyboardType="number-pad"
+              maxLength={2}
+              style={[styles.pill, styles.pillText, styles.input]}
+            />
+            <Text style={styles.colon}>:</Text>
+            <TextInput
+              value={minuteText}
+              onChangeText={setMinuteText}
+              keyboardType="number-pad"
+              maxLength={2}
+              style={[styles.pill, styles.pillText, styles.input]}
+            />
+          </View>
+        </>
+      )}
 
       <View style={styles.summary}>
-        <Text style={styles.pillText}>{formatKoreanDateTime(result.toISOString())}</Text>
+        <Text style={styles.pillText}>{includeTime ? formatKoreanDateTime(result.toISOString()) : formatKoreanDate(result.toISOString())}</Text>
       </View>
       <Pressable accessibilityRole="button" onPress={() => onConfirm(result.toISOString())} style={styles.confirm}>
         <Text style={styles.confirmText}>{confirmLabel}</Text>

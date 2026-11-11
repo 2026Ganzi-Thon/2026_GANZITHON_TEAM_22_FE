@@ -26,7 +26,7 @@
 | 폰트 | expo-font | 58 | 학교안심 둥근미소(B·R), 프리텐다드(SemiBold·Regular) |
 | 스플래시 | expo-splash-screen | 58 | 네이티브 스플래시 + 같은 이미지 오버레이 |
 | 코드 검사 | ESLint (eslint-config-expo) | 9 | `npx expo lint` |
-| 알림 (예정) | expo-notifications | — | 다음 시작 알림 기기 로컬 예약 |
+| 알림 | expo-notifications | 58 | 다음 시작 알림 기기 로컬 예약 |
 | 디자인 | Figma | — | 와이어프레임·디자인 기준값 |
 
 ---
@@ -51,7 +51,7 @@
 앱 ──→ OS 로컬 알림 예약 (다음 시작 알림. 서버는 "알림 의도"만 저장)
 ```
 
-백엔드 설계는 노션 "개발 가이드·협업 규칙 · 백엔드 v0.3" 기준이며 **아직 제안 단계**다.
+API 연동 상세와 현재 백엔드 의존 항목은 [HANDOFF.md](HANDOFF.md)를 참고한다.
 
 ### 프론트 역할 분담
 
@@ -60,19 +60,19 @@
 | 화면, 캐릭터 영상·모션, 카메라 미리보기, 권한 요청 | 데이터 저장, 공부 상태(공부 중·휴식·종료)와 시간 집계 |
 | 알림 기기 예약·취소 | 알림 의도 저장, AI 호출 |
 
-### 프론트 데이터 흐름 (현재: 더미 데이터)
+### 프론트 데이터 흐름
 
 ```
 화면 (src/app)
   └─ 조각 컴포넌트 (src/features, src/components)
-        └─ 데이터 읽기·쓰기: src/mocks/store.ts  ← 지금은 메모리에만 저장
-                                                    (앱을 끄면 초기화)
+        └─ 데이터 상태: src/mocks/store.ts
+              └─ 서버 통신: src/services/backend.ts → HTTPS REST /api/v1
+                    └─ 인증 토큰: expo-secure-store (웹은 localStorage)
 ```
 
-- 화면은 데이터를 직접 만들지 않고 `src/mocks`에서만 가져온다.
-- API 연동 지점은 코드에 `// TODO(API): ...`로 표시했다. `TODO(API)`로 검색하면 연동할 곳이 모두 나온다.
-- 서버가 준비되면 `src/mocks`의 함수 안만 실제 API 호출로 바꾼다. 화면 코드는 그대로 둔다.
-- 스터디룸 타이머는 `src/hooks/useStudySession.ts`에서 관리한다. 1초씩 더하지 않고 "시작 시각과의 차이"로 계산한다. 연동 후에는 서버의 `studySeconds`를 기준으로 표시만 한다.
+- 할 일·공부 세션·다음 시작 알림·대화는 서버 API를 사용한다.
+- `src/mocks` 폴더에는 상태 저장소와 초기 화면에서 쓰던 데이터 파일이 함께 남아 있다. 현재 API 연결 상태는 [HANDOFF.md](HANDOFF.md)를 기준으로 한다.
+- 스터디룸 타이머는 `src/hooks/useStudySession.ts`에서 관리하며, 서버가 주는 `studySeconds`를 기준으로 표시한다.
 
 ### 화면 구성
 
@@ -100,8 +100,9 @@ src/
   hooks/        useStudySession (스터디룸 타이머)
   constants/    theme.ts (색·폰트·간격), characters.ts, tabs.ts
   types/        데이터 타입
-  mocks/        더미 데이터 + 임시 저장소 (TODO(API) 교체 대상)
-  utils/        날짜 표시, 뒤로가기
+  mocks/        화면 상태 저장소와 초기 화면용 데이터
+  services/     백엔드 API, 기기 로컬 알림
+  utils/        API 요청, 설정 저장, 날짜 표시, 뒤로가기
 assets/         fonts/, images/, videos/
 docs/           화면 정리, 디자인 시스템
 ```
@@ -187,8 +188,8 @@ npm run deploy       # 웹 빌드(dist/) 후 Cloudflare에 배포
 | 와이어프레임·디자인 | [피그마](https://www.figma.com/design/sIDudVq3kg25OT9aeG1cB8) (페이지 `프레임 디자인`) | `docs/screens.md`, `docs/design-system.md`, `theme.ts` |
 | API 명세 | 스웨거 (준비 중) | — |
 
-### 아직 정하지 않은 것
+### 백엔드 확인이 필요한 것
 
-- 백엔드 v0.3과 화면의 차이: 로그인 방식, 마감 시간 포함 여부, 알림 변경 가능 여부, 단체 대화 방식
-- 단체 대화방과 스터디룸 대화의 이력 공유 여부
-- 캐릭터 영상(mp4) 적용 범위
+- AI 생성 기능 활성화와 소셜 로그인 제공 여부
+- 프로필 닉네임·핸들, 알림 설정, 캐릭터 선택의 계정 저장 API
+- 할 일 마감 시각 저장 필요 여부 (현재 API는 날짜만 저장)

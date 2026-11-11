@@ -9,7 +9,7 @@ import TextField from '@/components/common/TextField';
 import SubtaskRow from '@/features/tasks/SubtaskRow';
 import { newId } from '@/mocks/store';
 import { isDone, toggleStatus, type Subtask } from '@/types/task';
-import { formatFullDateTime } from '@/utils/date';
+import { formatKoreanDate } from '@/utils/date';
 
 export type TaskFormValue = {
   title: string;
@@ -43,7 +43,7 @@ export default function TaskForm({ value, onChange, mode }: Props) {
 
       <SectionTitle title="마감 날짜" hint={mode === 'add' ? '(선택)' : undefined} />
       <FieldButton
-        value={value.dueAt && formatFullDateTime(value.dueAt)}
+        value={value.dueAt && formatKoreanDate(value.dueAt)}
         placeholder="마감 날짜가 언제야?"
         onPress={() => setSheetOpen(true)}
       />
@@ -74,6 +74,7 @@ export default function TaskForm({ value, onChange, mode }: Props) {
         title="마감 날짜"
         confirmLabel="마감 날짜 선택"
         initial={value.dueAt}
+        includeTime={false}
         onConfirm={(dueAt) => {
           set({ dueAt });
           setSheetOpen(false);

@@ -13,7 +13,7 @@ import SubtaskRow from '@/features/tasks/SubtaskRow';
 import TaskTitleBox from '@/features/tasks/TaskTitleBox';
 import { loadTaskDetail, taskActions, useMockStore } from '@/mocks/store';
 import { isDone } from '@/types/task';
-import { formatDotDateTime } from '@/utils/date';
+import { formatDotDate } from '@/utils/date';
 import { goBack } from '@/utils/navigation';
 
 export default function TaskDetailScreen() {
@@ -73,7 +73,7 @@ export default function TaskDetailScreen() {
 
   return (
     <Screen header={<Header backLabel="홈" right={right} />}>
-      <SectionTitle title="할 일" size="lg" right={task.dueAt && formatDotDateTime(task.dueAt)} />
+      <SectionTitle title="할 일" size="lg" right={task.dueAt && formatDotDate(task.dueAt)} />
       <TaskTitleBox title={task.title} dueAt={isDone(task) ? undefined : task.dueAt} />
 
       {task.subtasks.length > 0 && (

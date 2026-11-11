@@ -4,16 +4,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CroppedImage from '@/components/common/CroppedImage';
-import type { CharacterId } from '@/constants/characters';
 import { colors, fonts } from '@/constants/theme';
 import ChatRoom from '@/features/chat/ChatRoom';
 import FriendToggleMenu from '@/features/chat/FriendToggleMenu';
+import LoadingView from '@/components/common/LoadingView';
+import { useCharacterSelection } from '@/hooks/useCharacterSelection';
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const [menuOpen, setMenuOpen] = useState(false);
-  // TODO(API): 대화할 친구 설정 저장 (단체 대화방·스터디룸 대화 공통)
-  const [enabled, setEnabled] = useState<Record<CharacterId, boolean>>({ angry: true, sad: true, joy: true });
+  const { enabled, toggle, characterKeys, loaded } = useCharacterSelection();
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 12 }]}>
@@ -28,10 +28,10 @@ export default function ChatScreen() {
           />
         </Pressable>
         {menuOpen && (
-          <FriendToggleMenu enabled={enabled} onToggle={(id) => setEnabled((prev) => ({ ...prev, [id]: !prev[id] }))} />
+          <FriendToggleMenu enabled={enabled} onToggle={toggle} />
         )}
       </View>
-      <ChatRoom characterKeys={Object.entries(enabled).filter(([, value]) => value).map(([id]) => id as CharacterId)} />
+      {loaded ? <ChatRoom characterKeys={characterKeys} /> : <LoadingView message="친구 설정을 불러오는 중이야..." />}
     </View>
   );
 }

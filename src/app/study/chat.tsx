@@ -6,13 +6,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Header from '@/components/layout/Header';
 import { colors, fonts, fontSize } from '@/constants/theme';
 import ChatRoom from '@/features/chat/ChatRoom';
+import LoadingView from '@/components/common/LoadingView';
 import { studyActions, useStudySession } from '@/hooks/useStudySession';
+import { useCharacterSelection } from '@/hooks/useCharacterSelection';
 import { useMockStore } from '@/mocks/store';
 
 export default function StudyChatScreen() {
   const insets = useSafeAreaInsets();
   const session = useStudySession();
   const task = useMockStore().tasks.find((t) => t.id === session.taskId);
+  const { characterKeys, loaded } = useCharacterSelection();
 
   // 대화하는 동안 공부 시간 일시정지, 닫으면 원래 상태로 (명세 ST-03 ②)
   useEffect(() => {
@@ -43,7 +46,9 @@ export default function StudyChatScreen() {
         <Text style={styles.title}>이모양즈와 대화</Text>
         {task && <Text style={styles.sub}>{task.title}</Text>}
       </View>
-      <ChatRoom bottomInset={insets.bottom} studySessionId={session.sessionId} />
+      {loaded
+        ? <ChatRoom bottomInset={insets.bottom} studySessionId={session.sessionId} characterKeys={characterKeys} />
+        : <LoadingView message="친구 설정을 불러오는 중이야..." />}
     </View>
   );
 }

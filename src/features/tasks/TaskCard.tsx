@@ -4,7 +4,7 @@ import Badge from '@/components/common/Badge';
 import CheckCircle from '@/components/common/CheckCircle';
 import { colors, fonts, fontSize, radius } from '@/constants/theme';
 import { isDone, type Task } from '@/types/task';
-import { formatDday, formatMonthDayTime } from '@/utils/date';
+import { formatDday, formatMonthDay } from '@/utils/date';
 
 type Props = {
   task: Task;
@@ -14,7 +14,7 @@ type Props = {
 
 // 제목 아래 문구: 마감일 → 미완료 세부 할 일 첫 번째 → 없음 (docs/screens.md HM-01)
 function getSubText(task: Task) {
-  if (task.dueAt) return formatMonthDayTime(task.dueAt);
+  if (task.dueAt) return formatMonthDay(task.dueAt);
   return task.subtasks.find((s) => !isDone(s))?.title;
 }
 

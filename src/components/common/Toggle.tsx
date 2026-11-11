@@ -6,17 +6,19 @@ type Props = {
   value: boolean;
   onChange: (value: boolean) => void;
   accessibilityLabel?: string;
+  disabled?: boolean;
 };
 
 // 켜기/끄기 스위치 (MY-01 알림 설정)
-export default function Toggle({ value, onChange, accessibilityLabel }: Props) {
+export default function Toggle({ value, onChange, accessibilityLabel, disabled = false }: Props) {
   return (
     <Pressable
       accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
+      accessibilityState={{ checked: value, disabled }}
       accessibilityLabel={accessibilityLabel}
+      disabled={disabled}
       onPress={() => onChange(!value)}
-      style={[styles.track, value && styles.trackOn]}>
+      style={[styles.track, value && styles.trackOn, disabled && styles.disabled]}>
       <View style={[styles.thumb, value && styles.thumbOn]} />
     </Pressable>
   );
@@ -33,6 +35,7 @@ const styles = StyleSheet.create({
   trackOn: {
     backgroundColor: colors.primarySoft,
   },
+  disabled: { opacity: 0.5 },
   thumb: {
     width: 24,
     height: 24,

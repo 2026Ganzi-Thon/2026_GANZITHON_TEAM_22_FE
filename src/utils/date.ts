@@ -6,6 +6,24 @@ export function formatMonthDayTime(iso: string) {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** 11/01 */
+export function formatMonthDay(iso: string) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${pad(d.getDate())}`;
+}
+
+/** 2026/11/01 */
+export function formatKoreanDate(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+/** 2026.11.01 */
+export function formatDotDate(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+}
+
 /** 마감까지 남은 날짜. 오늘 = D-day, 지남 = D+n */
 export function formatDday(iso: string, now = new Date()) {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();

@@ -12,7 +12,7 @@ import { studyActions } from '@/hooks/useStudySession';
 import { reminderActions, useMockStore } from '@/mocks/store';
 import { cancelStartReminder } from '@/services/localNotifications';
 import { isDone } from '@/types/task';
-import { formatDday, formatMonthDayTime } from '@/utils/date';
+import { formatDday, formatMonthDay } from '@/utils/date';
 
 export default function StudyStartScreen() {
   const insets = useSafeAreaInsets();
@@ -61,7 +61,7 @@ export default function StudyStartScreen() {
                 <View style={[styles.radio, selected && styles.radioOn]} />
                 <View style={styles.itemTexts}>
                   <Text style={styles.itemTitle}>{task.title}</Text>
-                  {task.dueAt && <Text style={styles.itemSub}>{formatMonthDayTime(task.dueAt)}</Text>}
+                  {task.dueAt && <Text style={styles.itemSub}>{formatMonthDay(task.dueAt)}</Text>}
                 </View>
                 {task.dueAt && <Badge label={formatDday(task.dueAt)} />}
               </Pressable>

@@ -11,7 +11,7 @@ import TaskTitleBox from '@/features/tasks/TaskTitleBox';
 import { useStudySession } from '@/hooks/useStudySession';
 import { loadTaskDetail, taskActions, useMockStore } from '@/mocks/store';
 import { isDone } from '@/types/task';
-import { formatMonthDayTime } from '@/utils/date';
+import { formatMonthDay } from '@/utils/date';
 
 // 이 화면을 열어도 공부 시간은 그대로 흐른다 (명세 ST-03 ①)
 export default function StudyTodoScreen() {
@@ -29,7 +29,7 @@ export default function StudyTodoScreen() {
     <Screen header={<Header backLabel="스터디룸" />}>
       {task ? (
         <>
-          <SectionTitle title="지금 하는 일" size="lg" right={task.dueAt && formatMonthDayTime(task.dueAt)} />
+          <SectionTitle title="지금 하는 일" size="lg" right={task.dueAt && formatMonthDay(task.dueAt)} />
           <TaskTitleBox title={task.title} />
           {task.subtasks.length > 0 && <SectionTitle title="세부 할 일" />}
           <View style={styles.list}>

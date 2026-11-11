@@ -5,7 +5,7 @@ import ChatInput from '@/features/chat/ChatInput';
 import MessageItem from '@/features/chat/MessageItem';
 import { CHARACTER_IDS, type CharacterId } from '@/constants/characters';
 import { colors, fonts } from '@/constants/theme';
-import { createExchange, getChatHistory, newClientRequestId, type ExchangeDTO, type ExchangeUtteranceDTO } from '@/services/backend';
+import { createExchange, getChatHistory, getChatUsage, newClientRequestId, type ExchangeDTO, type ExchangeUtteranceDTO } from '@/services/backend';
 import type { ChatMessage } from '@/types/chat';
 
 type Props = {
@@ -47,6 +47,7 @@ function isFailed(exchange: ExchangeDTO) {
 export default function ChatRoom({ bottomInset = 0, studySessionId, characterKeys = CHARACTER_IDS }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [dailyRequestLimit, setDailyRequestLimit] = useState<number | null>(null);
   const previousRequestId = useRef<string | null>(null);
   const inFlight = useRef(false);
   const waitingId = messages.find((message) => message.pending)?.id;
@@ -54,6 +55,9 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
 
   useEffect(() => {
     let active = true;
+    getChatUsage()
+      .then((usage) => { if (active) setDailyRequestLimit(usage.dailyRequestLimit); })
+      .catch(() => undefined);
     getChatHistory(50)
       .then(({ items }) => {
         if (!active) return;
@@ -113,6 +117,7 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {dailyRequestLimit !== null && <Text style={styles.usage}>하루 대화 요청 한도 {dailyRequestLimit}회</Text>}
       <FlatList
         data={[...messages].reverse()}
         inverted
@@ -131,4 +136,5 @@ const styles = StyleSheet.create({
   flex: { flex: 1, paddingHorizontal: 22 },
   list: { flexGrow: 1, justifyContent: 'flex-end', gap: 14, paddingVertical: 12 },
   empty: { alignSelf: 'center', marginVertical: 16, fontFamily: fonts.body, fontSize: 14, color: colors.textSub },
+  usage: { alignSelf: 'flex-end', paddingTop: 4, fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },
 });

@@ -1,6 +1,13 @@
 import { Platform } from 'react-native';
 import { AndroidImportance, SchedulableTriggerInputTypes } from 'expo-notifications';
 import * as Notifications from 'expo-notifications';
+import { readPreference } from '@/utils/preferences';
+
+const NOTIFICATIONS_ENABLED_KEY = 'notificationsEnabled';
+
+export async function getNotificationsEnabledPreference() {
+  return readPreference(NOTIFICATIONS_ENABLED_KEY, true);
+}
 
 export async function requestLocalNotificationPermission() {
   if (Platform.OS === 'web') return false;
@@ -16,9 +23,15 @@ export async function requestLocalNotificationPermission() {
   return requested.granted;
 }
 
+export async function hasLocalNotificationPermission() {
+  if (Platform.OS === 'web') return false;
+  return (await Notifications.getPermissionsAsync()).granted;
+}
+
 export async function scheduleStartReminder(reminderId: string, remindAt: string, requestPermission = true) {
   if (Platform.OS === 'web') return false;
   await cancelStartReminder(reminderId);
+  if (!(await getNotificationsEnabledPreference())) return false;
   const granted = requestPermission
     ? await requestLocalNotificationPermission()
     : (await Notifications.getPermissionsAsync()).granted;
@@ -52,4 +65,11 @@ export async function clearStaleStartReminders(activeReminderId?: string) {
     return typeof reminderId === 'string' && reminderId !== activeReminderId;
   });
   await Promise.all(stale.map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier)));
+}
+
+export async function cancelAllStartReminders() {
+  if (Platform.OS === 'web') return;
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const reminders = scheduled.filter((item) => typeof item.content.data?.reminderId === 'string');
+  await Promise.all(reminders.map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier)));
 }
