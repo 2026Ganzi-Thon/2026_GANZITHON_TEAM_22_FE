@@ -1,7 +1,7 @@
 // TK-01 할 일 목록 (진행 중 / 완료 탭)
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Icon from '@/components/common/Icon';
@@ -16,7 +16,6 @@ export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const { tasks } = useMockStore();
   const [tab, setTab] = useState<Tab>('doing');
-  // TODO(API): 탭별 목록 조회. 순서 변경(길게 눌러 위아래)은 기능 구현 때 추가
   const list = tasks.filter((t) => (tab === 'done' ? isDone(t) : !isDone(t)));
 
   return (
@@ -45,7 +44,7 @@ export default function TasksScreen() {
               <TaskCard
                 key={task.id}
                 task={task}
-                onToggle={() => taskActions.toggle(task.id)}
+                onToggle={() => taskActions.toggle(task.id).catch((error) => Alert.alert('수정하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
                 onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
               />
             ))

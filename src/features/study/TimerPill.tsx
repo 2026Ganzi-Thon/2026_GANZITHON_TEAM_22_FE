@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
 import { formatElapsed, studyActions, useElapsed, useStudySession } from '@/hooks/useStudySession';
@@ -14,7 +14,7 @@ export default function TimerPill() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={resting ? '다시 시작하기' : '잠깐 쉬기'}
-      onPress={resting ? studyActions.resume : studyActions.pause}
+      onPress={() => (resting ? studyActions.resume() : studyActions.pause()).catch((error) => Alert.alert('상태를 바꾸지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
       style={styles.pill}>
       {resting ? (
         <Text style={styles.text}>▶ 다시 시작</Text>

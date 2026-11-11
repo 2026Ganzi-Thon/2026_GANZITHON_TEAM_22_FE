@@ -1,39 +1,114 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 
 import ChatInput from '@/features/chat/ChatInput';
 import MessageItem from '@/features/chat/MessageItem';
-import { MOCK_MESSAGES } from '@/mocks/messages';
-import { newId } from '@/mocks/store';
-import type { CharacterId } from '@/constants/characters';
+import { CHARACTER_IDS, type CharacterId } from '@/constants/characters';
+import { colors, fonts } from '@/constants/theme';
+import { createExchange, getChatHistory, newClientRequestId, type ExchangeDTO, type ExchangeUtteranceDTO } from '@/services/backend';
 import type { ChatMessage } from '@/types/chat';
 
-// 가짜 답장 (API 연결 전 확인용)
-const MOCK_REPLY: { sender: CharacterId; text: string } = { sender: 'joy', text: '좋아, 우리 같이 조금만 해보자!' };
+type Props = {
+  bottomInset?: number;
+  studySessionId?: string;
+  characterKeys?: CharacterId[];
+};
 
-// 대화 목록 + 입력창 (CH-01, ST-03-chat 공용)
-export default function ChatRoom({ bottomInset = 0 }: { bottomInset?: number }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
+function characterId(value: unknown, fallback: CharacterId): CharacterId {
+  const normalized = String(value ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  if (normalized === 'angry' || normalized === 'anger') return 'angry';
+  if (normalized === 'sad' || normalized === 'sadness') return 'sad';
+  if (normalized === 'joy' || normalized === 'happy' || normalized === 'happiness') return 'joy';
+  return fallback;
+}
 
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-  const waiting = messages.some((m) => m.pending);
+function toMessage(utterance: ExchangeUtteranceDTO, fallback: CharacterId, index: number): ChatMessage | null {
+  const value = utterance as ExchangeUtteranceDTO & Record<string, unknown>;
+  const text = value.content ?? value.text ?? value.message ?? value.utterance;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const sender = characterId(value.characterKey ?? value.characterId ?? value.character ?? value.speaker, fallback);
+  return { id: value.id ?? `reply-${index}-${newClientRequestId()}`, sender, text: text.trim() };
+}
 
-  // 답을 기다리는 동안 "…" 말풍선을 띄우고, 답이 오면 그 자리를 답으로 바꾼다. 기다리는 중에는 새로 보내지 않는다
-  // TODO(API): 타이머 자리를 A16 대화 요청으로 교체 (최대 35초 대기, 실패하면 pending 말풍선 제거 + 실패 안내)
-  const send = (text: string) => {
-    if (waiting) return;
-    const pendingId = newId();
-    setMessages((prev) => [
-      ...prev,
-      { id: newId(), sender: 'me', text },
-      { id: pendingId, sender: MOCK_REPLY.sender, text: '', pending: true },
+function messagesFromHistory(exchange: ExchangeDTO, fallback: CharacterId): ChatMessage[] {
+  const userMessage = exchange.content?.trim()
+    ? [{ id: `${exchange.id}-user`, sender: 'me' as const, text: exchange.content.trim() }]
+    : [];
+  const replies = Array.isArray(exchange.utterances)
+    ? exchange.utterances.map((utterance, index) => toMessage(utterance, fallback, index)).filter((item): item is ChatMessage => item !== null)
+    : [];
+  return [...userMessage, ...replies];
+}
+
+function isFailed(exchange: ExchangeDTO) {
+  return exchange.status.toUpperCase() === 'FAILED' || Boolean(exchange.failureCode);
+}
+
+export default function ChatRoom({ bottomInset = 0, studySessionId, characterKeys = CHARACTER_IDS }: Props) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const previousRequestId = useRef<string | null>(null);
+  const inFlight = useRef(false);
+  const waitingId = messages.find((message) => message.pending)?.id;
+  const fallbackCharacter = characterKeys[0] ?? 'joy';
+
+  useEffect(() => {
+    let active = true;
+    getChatHistory(50)
+      .then(({ items }) => {
+        if (!active) return;
+        const newestFirst = [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        previousRequestId.current = newestFirst[0]?.clientRequestId ?? null;
+        setMessages(newestFirst.reverse().flatMap((item) => messagesFromHistory(item, fallbackCharacter)));
+      })
+      .catch((error) => {
+        if (active) Alert.alert('대화 기록을 불러오지 못했어', error instanceof Error ? error.message : '새 대화는 계속할 수 있어.');
+      })
+      .finally(() => {
+        if (active) setLoadingHistory(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fallbackCharacter]);
+
+  const send = async (content: string) => {
+    if (inFlight.current || loadingHistory) return;
+    inFlight.current = true;
+    const clientRequestId = newClientRequestId();
+    const pendingId = newClientRequestId();
+    setMessages((current) => [
+      ...current,
+      { id: newClientRequestId(), sender: 'me', text: content },
+      { id: pendingId, sender: fallbackCharacter, text: '', pending: true },
     ]);
-    timer.current = setTimeout(() => {
-      setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, text: MOCK_REPLY.text, pending: false } : m)));
-    }, 1500);
+
+    try {
+      const exchange = await createExchange({
+        clientRequestId,
+        content,
+        studySessionId: studySessionId ?? null,
+        previousRequestId: previousRequestId.current,
+        characterKeys: characterKeys.map((key) => key.toUpperCase()),
+      });
+      previousRequestId.current = exchange.clientRequestId;
+      if (isFailed(exchange)) {
+        throw new Error(exchange.failureCode ? `답변을 만들지 못했어 (${exchange.failureCode}).` : '답변을 만들지 못했어.');
+      }
+      const replies = Array.isArray(exchange.utterances)
+        ? exchange.utterances.map((utterance, index) => toMessage(utterance, fallbackCharacter, index)).filter((item): item is ChatMessage => item !== null)
+        : [];
+      if (!replies.length) throw new Error('AI가 답변을 보내지 않았어. 잠시 후 다시 시도해줘.');
+      setMessages((current) => current.flatMap((message) => {
+        if (message.id !== pendingId) return [message];
+        return replies;
+      }));
+    } catch (error) {
+      setMessages((current) => current.filter((message) => message.id !== pendingId));
+      Alert.alert('대화를 보내지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    } finally {
+      inFlight.current = false;
+    }
   };
 
   return (
@@ -41,23 +116,19 @@ export default function ChatRoom({ bottomInset = 0 }: { bottomInset?: number }) 
       <FlatList
         data={[...messages].reverse()}
         inverted
-        keyExtractor={(m) => m.id}
+        keyExtractor={(message) => message.id}
         renderItem={({ item }) => <MessageItem message={item} />}
+        ListEmptyComponent={!loadingHistory ? <Text style={styles.empty}>친구들에게 먼저 이야기해 봐.</Text> : undefined}
         contentContainerStyle={styles.list}
       />
-      <ChatInput onSend={send} />
+      <ChatInput onSend={send} disabled={loadingHistory || Boolean(waitingId)} />
       <View style={{ height: bottomInset + 12 }} />
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    paddingHorizontal: 22,
-  },
-  list: {
-    gap: 14,
-    paddingVertical: 12,
-  },
+  flex: { flex: 1, paddingHorizontal: 22 },
+  list: { flexGrow: 1, justifyContent: 'flex-end', gap: 14, paddingVertical: 12 },
+  empty: { alignSelf: 'center', marginVertical: 16, fontFamily: fonts.body, fontSize: 14, color: colors.textSub },
 });

@@ -1,16 +1,17 @@
 // HM-02-detail 할 일 자세히 보기 (+ HM-03-done: 추가 직후, created=1)
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import ConfirmDialog from '@/components/common/ConfirmDialog';
+import LoadingView from '@/components/common/LoadingView';
 import SectionTitle from '@/components/common/SectionTitle';
 import Header, { HeaderAction, HeaderEdit } from '@/components/layout/Header';
 import Screen from '@/components/layout/Screen';
 import { colors, fonts, fontSize } from '@/constants/theme';
 import SubtaskRow from '@/features/tasks/SubtaskRow';
 import TaskTitleBox from '@/features/tasks/TaskTitleBox';
-import { taskActions, useMockStore } from '@/mocks/store';
+import { loadTaskDetail, taskActions, useMockStore } from '@/mocks/store';
 import { isDone } from '@/types/task';
 import { formatDotDateTime } from '@/utils/date';
 import { goBack } from '@/utils/navigation';
@@ -20,6 +21,18 @@ export default function TaskDetailScreen() {
   const { tasks } = useMockStore();
   const task = tasks.find((t) => t.id === id);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    loadTaskDetail(id)
+      .catch((error) => Alert.alert('할 일을 불러오지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.'))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return <Screen header={<Header backLabel="홈" />}><LoadingView /></Screen>;
+  }
 
   if (!task) {
     return (
@@ -29,15 +42,22 @@ export default function TaskDetailScreen() {
     );
   }
 
-  // TODO(API): 완료 처리 / 삭제 요청 (연결된 예약 알림도 취소)
-  const complete = () => {
-    taskActions.update(task.id, { status: 'DONE' });
-    goBack();
+  const complete = async () => {
+    try {
+      await taskActions.update(task.id, { status: 'DONE' });
+      goBack();
+    } catch (error) {
+      Alert.alert('완료 처리하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    }
   };
-  const remove = () => {
-    taskActions.remove(task.id);
-    setConfirmDelete(false);
-    goBack();
+  const remove = async () => {
+    try {
+      await taskActions.remove(task.id);
+      setConfirmDelete(false);
+      goBack();
+    } catch (error) {
+      Alert.alert('삭제하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    }
   };
 
   const right = (
@@ -65,7 +85,7 @@ export default function TaskDetailScreen() {
                 key={s.id}
                 title={s.title}
                 done={isDone(s)}
-                onToggle={() => taskActions.toggleSub(task.id, s.id)}
+                onToggle={() => taskActions.toggleSub(task.id, s.id).catch((error) => Alert.alert('수정하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
               />
             ))}
           </View>

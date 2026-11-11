@@ -1,10 +1,9 @@
-// 로그인 (이메일 / 비밀번호)
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Button from '@/components/common/Button';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, fontSize } from '@/constants/theme';
 import AuthField from '@/features/auth/AuthField';
 import AuthLayout from '@/features/auth/AuthLayout';
 import { authActions } from '@/mocks/store';
@@ -12,37 +11,82 @@ import { authActions } from '@/mocks/store';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // TODO(API): 로그인 요청 → 토큰 저장(expo-secure-store). 지금은 바로 홈으로
-  const login = () => {
-    authActions.login();
-    router.replace('/');
+  const submit = async () => {
+    if (loading) return;
+    if (!email.trim() || !password) {
+      Alert.alert('로그인 정보를 입력해줘', '이메일과 비밀번호를 확인해줘.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await authActions.loginWithEmail(email, password);
+      router.replace('/');
+    } catch (error) {
+      Alert.alert('로그인하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startAsGuest = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await authActions.login();
+      router.replace('/');
+    } catch (error) {
+      Alert.alert('시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <AuthLayout>
-      <AuthField label="이메일" value={email} onChangeText={setEmail} placeholder="이메일을 입력해주세요." keyboardType="email-address" />
-      <AuthField label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호를 입력해주세요." password />
+      <AuthField
+        label="이메일"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="이메일을 입력해줘"
+        keyboardType="email-address"
+        autoComplete="email"
+        textContentType="emailAddress"
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={!loading}
+      />
+      <AuthField
+        label="비밀번호"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="비밀번호를 입력해줘"
+        password
+        autoComplete="password"
+        textContentType="password"
+        editable={!loading}
+        onSubmitEditing={submit}
+        returnKeyType="go"
+      />
       <View style={styles.buttons}>
-        <Button label="로그인" size="md" onPress={login} />
-        <Button label="회원가입" size="md" variant="outline" onPress={() => router.push('/signup')} />
+        <Button label={loading ? '로그인 중...' : '로그인'} size="md" disabled={loading} onPress={submit} />
+        <Button label="게스트로 시작하기" size="md" variant="outline" disabled={loading} onPress={startAsGuest} />
       </View>
-      {/* TODO: 아이디·비밀번호 찾기 화면 (와이어프레임 없음) */}
-      <Text style={styles.find}>아이디 · 비밀번호 찾기</Text>
+      <Pressable accessibilityRole="button" disabled={loading} onPress={() => router.push('/signup')}>
+        <Text style={styles.link}>처음이야? 이메일로 가입하기</Text>
+      </Pressable>
     </AuthLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  buttons: {
-    gap: 10,
-    marginTop: 14,
-  },
-  find: {
-    marginTop: 10,
+  buttons: { gap: 10, marginTop: 8 },
+  link: {
+    paddingVertical: 8,
     textAlign: 'center',
     fontFamily: fonts.body,
-    fontSize: 11,
+    fontSize: fontSize.sm,
     color: colors.textSub,
   },
 });

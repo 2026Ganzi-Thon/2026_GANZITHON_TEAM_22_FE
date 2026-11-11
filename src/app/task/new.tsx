@@ -1,6 +1,7 @@
 // HM-02-add 할 일 추가
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { Alert } from 'react-native';
 
 import Header, { HeaderAction } from '@/components/layout/Header';
 import Screen from '@/components/layout/Screen';
@@ -10,15 +11,25 @@ import { taskActions } from '@/mocks/store';
 export default function TaskNewScreen() {
   const [value, setValue] = useState<TaskFormValue>({ title: '', subtasks: [] });
 
-  // TODO(API): 할 일 생성 요청. 성공하면 추가 완료 화면(HM-03-done)으로
-  const submit = () => {
+  const submit = async () => {
     if (!value.title.trim()) return;
-    const task = taskActions.create({
-      title: value.title.trim(),
-      dueAt: value.dueAt,
-      subtasks: value.subtasks.map((s) => s.title.trim()),
-    });
-    router.replace({ pathname: '/task/[id]', params: { id: task.id, created: '1' } });
+    try {
+      const task = await taskActions.create({
+        title: value.title.trim(),
+        dueAt: value.dueAt,
+        subtasks: value.subtasks.map((s) => s.title.trim()),
+      });
+      router.replace({ pathname: '/task/[id]', params: { id: task.id, created: '1' } });
+    } catch (error) {
+      const taskId = typeof error === 'object' && error && 'taskId' in error ? String(error.taskId) : undefined;
+      if (taskId) {
+        Alert.alert('할 일은 저장했어', '일부 세부 할 일은 저장되지 않았어. 상세 화면에서 다시 확인해줘.', [
+          { text: '확인', onPress: () => router.replace({ pathname: '/task/[id]', params: { id: taskId, created: '1' } }) },
+        ]);
+        return;
+      }
+      Alert.alert('할 일을 저장하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    }
   };
 
   return (

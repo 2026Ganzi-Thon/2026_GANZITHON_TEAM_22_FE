@@ -1,6 +1,6 @@
 // ST-03-chat 스터디룸 대화
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Header from '@/components/layout/Header';
@@ -17,9 +17,20 @@ export default function StudyChatScreen() {
   // 대화하는 동안 공부 시간 일시정지, 닫으면 원래 상태로 (명세 ST-03 ②)
   useEffect(() => {
     const wasStudying = session.status === 'study';
-    if (wasStudying) studyActions.pause();
+    let pauseSucceeded = false;
+    const pausePromise = wasStudying
+      ? studyActions.pause()
+          .then(() => { pauseSucceeded = true; })
+          .catch((error) => { Alert.alert('일시정지하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'); })
+      : Promise.resolve();
     return () => {
-      if (wasStudying) studyActions.resume();
+      if (wasStudying) {
+        pausePromise.then(() => {
+          if (pauseSucceeded) {
+            return studyActions.resume().catch((error) => Alert.alert('다시 시작하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'));
+          }
+        });
+      }
     };
     // 화면에 들어올 때 한 번만
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -32,7 +43,7 @@ export default function StudyChatScreen() {
         <Text style={styles.title}>이모양즈와 대화</Text>
         {task && <Text style={styles.sub}>{task.title}</Text>}
       </View>
-      <ChatRoom bottomInset={insets.bottom} />
+      <ChatRoom bottomInset={insets.bottom} studySessionId={session.sessionId} />
     </View>
   );
 }

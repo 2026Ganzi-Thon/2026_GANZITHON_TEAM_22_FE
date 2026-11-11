@@ -1,102 +1,260 @@
 import { useSyncExternalStore } from 'react';
 
-import { MOCK_REMINDER, MOCK_TASKS } from '@/mocks/tasks';
-import { toggleStatus, type Reminder, type Subtask, type Task } from '@/types/task';
+import {
+  changeStartReminder,
+  createSubtask,
+  createTask as postTask,
+  deleteStartReminder,
+  deleteSubtask,
+  deleteTask,
+  ensureGuestSession,
+  getCurrentReminder,
+  getCurrentStudySession,
+  getTask,
+  loginEmail,
+  listTasks,
+  patchSubtask,
+  patchTask,
+  putNextStartReminder,
+  registerEmail,
+  type ReminderDTO,
+  type SubtaskDTO,
+  type TaskDTO,
+} from '@/services/backend';
+import { clearAccessToken } from '@/utils/token';
+import { studyActions } from '@/hooks/useStudySession';
+import type { Reminder, Subtask, Task } from '@/types/task';
+import { cancelStartReminder, clearStaleStartReminders, scheduleStartReminder } from '@/services/localNotifications';
 
-// 화면끼리 같은 데이터를 보도록 메모리에만 두는 임시 저장소.
-// TODO(API): 이 파일 전체를 API 호출(조회·생성·수정·삭제)로 교체. 앱을 끄면 초기화된다.
-
-type State = { tasks: Task[]; reminder: Reminder | null; loggedIn: boolean };
-
-// 웹은 새로고침하면 메모리가 비워져 로그아웃되므로, 로그인 여부만 브라우저에 기억해 둔다.
-// TODO(API): 실제로는 토큰을 안전한 저장소(앱 expo-secure-store / 웹 저장소)에 두고 GET /me로 확인
-const LOGIN_KEY = 'haeboyang.loggedIn';
-const webStorage = () => (typeof window !== 'undefined' && window.localStorage ? window.localStorage : null);
-const readLoggedIn = () => {
-  try {
-    return webStorage()?.getItem(LOGIN_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-const writeLoggedIn = (value: boolean) => {
-  try {
-    if (value) webStorage()?.setItem(LOGIN_KEY, '1');
-    else webStorage()?.removeItem(LOGIN_KEY);
-  } catch {
-    // 저장소를 못 쓰는 환경(사생활 보호 모드 등)에서는 기억하지 않는다
-  }
-};
-
-let state: State = { tasks: MOCK_TASKS, reminder: MOCK_REMINDER, loggedIn: readLoggedIn() };
+type State = { tasks: Task[]; reminder: Reminder | null; loggedIn: boolean; loading: boolean; error: string | null };
+let state: State = { tasks: [], reminder: null, loggedIn: false, loading: true, error: null };
 const listeners = new Set<() => void>();
 
 const setState = (next: Partial<State>) => {
   state = { ...state, ...next };
-  listeners.forEach((l) => l());
+  listeners.forEach((listener) => listener());
 };
-
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => listeners.delete(l);
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 };
 
 export function useMockStore() {
   return useSyncExternalStore(subscribe, () => state, () => state);
 }
 
-let nextId = 100;
-export const newId = () => String(nextId++);
+export const newId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const dateOnlyToLocalIso = (date: string | null) => (date ? `${date.slice(0, 10)}T00:00:00` : undefined);
+const toTask = (dto: TaskDTO): Task => ({
+  id: dto.id,
+  title: dto.title,
+  dueAt: dateOnlyToLocalIso(dto.dueDate),
+  status: dto.status,
+  subtasks: (dto.subtasks ?? []).map((subtask) => ({ id: subtask.id, title: subtask.title, status: subtask.status })),
+});
+const toSubtask = (dto: SubtaskDTO): Subtask => ({ id: dto.id, title: dto.title, status: dto.status });
+const toReminder = (dto: ReminderDTO | null): Reminder | null => dto ? ({
+  id: dto.id,
+  sessionId: dto.sessionId,
+  remindAt: dto.remindAt,
+  timeZone: dto.timeZone,
+  status: dto.status,
+}) : null;
+const dateForApi = (dueAt?: string | null) => {
+  if (!dueAt) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dueAt)) return dueAt;
+  const date = new Date(dueAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export async function refreshTasks() {
+  const result = await listTasks();
+  const tasks = result.items.map((dto) => {
+    const task = toTask(dto);
+    if (dto.subtasks === undefined) task.subtasks = state.tasks.find((current) => current.id === task.id)?.subtasks ?? [];
+    return task;
+  });
+  setState({ tasks });
+  return tasks;
+}
+
+export async function loadTaskDetail(taskId: string) {
+  const task = toTask(await getTask(taskId));
+  setState({ tasks: state.tasks.map((item) => item.id === taskId ? task : item) });
+  return task;
+}
+
+async function refreshReminder() {
+  const { reminder } = await getCurrentReminder();
+  setState({ reminder: toReminder(reminder) });
+  try {
+    await clearStaleStartReminders(reminder?.status === 'ACTIVE' ? reminder.id : undefined);
+    if (reminder?.status === 'ACTIVE') await scheduleStartReminder(reminder.id, reminder.remindAt, false);
+  } catch {
+    // Server reminder state remains authoritative if the OS notification service is unavailable.
+  }
+  return reminder;
+}
+
+let initializePromise: Promise<void> | null = null;
+export function initializeAppStore() {
+  if (initializePromise) return initializePromise;
+  initializePromise = (async () => {
+    setState({ loading: true, error: null });
+    try {
+      await ensureGuestSession();
+      const [taskResult, reminderResult, studyResult] = await Promise.all([
+        listTasks(),
+        getCurrentReminder(),
+        getCurrentStudySession(),
+      ]);
+      setState({
+        tasks: taskResult.items.map(toTask),
+        reminder: toReminder(reminderResult.reminder),
+        loggedIn: true,
+        loading: false,
+        error: null,
+      });
+      studyActions.restore(studyResult.studySession);
+      try {
+        await clearStaleStartReminders(reminderResult.reminder?.status === 'ACTIVE' ? reminderResult.reminder.id : undefined);
+        if (reminderResult.reminder?.status === 'ACTIVE') {
+          await scheduleStartReminder(reminderResult.reminder.id, reminderResult.reminder.remindAt, false);
+        }
+      } catch {
+        // The server reminder can still be edited or canceled without local notifications.
+      }
+    } catch (error) {
+      setState({ loading: false, error: error instanceof Error ? error.message : '서버에 연결하지 못했어요.' });
+      throw error;
+    } finally {
+      initializePromise = null;
+    }
+  })();
+  return initializePromise;
+}
+
+function applyTask(taskId: string, change: (task: Task) => Task) {
+  setState({ tasks: state.tasks.map((task) => task.id === taskId ? change(task) : task) });
+}
 
 export const taskActions = {
-  create(input: { title: string; dueAt?: string; subtasks: string[] }) {
-    const task: Task = {
-      id: newId(),
-      title: input.title,
-      dueAt: input.dueAt,
-      status: 'TODO',
-      subtasks: input.subtasks.filter(Boolean).map((title) => ({ id: newId(), title, status: 'TODO' })),
-    };
-    setState({ tasks: [...state.tasks, task] });
+  async create(input: { title: string; dueAt?: string; subtasks: string[] }) {
+    const parent = await postTask({ title: input.title, dueDate: dateForApi(input.dueAt) });
+    let task: Task = { ...toTask(parent), subtasks: [] };
+    setState({ tasks: [...state.tasks.filter((item) => item.id !== task.id), task] });
+    for (const title of input.subtasks.map((value) => value.trim()).filter(Boolean)) {
+      try {
+        const subtask = toSubtask(await createSubtask(parent.id, title));
+        task = { ...task, subtasks: [...task.subtasks, subtask] };
+        applyTask(parent.id, () => task);
+      } catch (error) {
+        throw Object.assign(error instanceof Error ? error : new Error('하위 할 일을 모두 저장하지 못했어요.'), { taskId: parent.id });
+      }
+    }
     return task;
   },
-  update(id: string, patch: Partial<Omit<Task, 'id'>>) {
-    setState({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+  async update(id: string, patch: Partial<Omit<Task, 'id'>>) {
+    const current = state.tasks.find((task) => task.id === id);
+    if (!current) return;
+    const dtoPatch: Partial<Pick<TaskDTO, 'title' | 'description' | 'dueDate' | 'status'>> = {};
+    if (patch.title !== undefined) dtoPatch.title = patch.title;
+    if (patch.dueAt !== undefined) dtoPatch.dueDate = dateForApi(patch.dueAt);
+    if (patch.status !== undefined) dtoPatch.status = patch.status;
+    const updated = Object.keys(dtoPatch).length
+      ? toTask(await patchTask(id, dtoPatch))
+      : { ...current, subtasks: [...current.subtasks] };
+
+    if (patch.subtasks) {
+      const oldById = new Map(current.subtasks.map((subtask) => [subtask.id, subtask]));
+      const next: Subtask[] = [];
+      for (const subtask of patch.subtasks.filter((item) => item.title.trim())) {
+        const old = oldById.get(subtask.id);
+        if (!old) {
+          next.push(toSubtask(await createSubtask(id, subtask.title.trim())));
+          continue;
+        }
+        oldById.delete(subtask.id);
+        const change: Partial<Pick<SubtaskDTO, 'title' | 'status'>> = {};
+        if (old.title !== subtask.title.trim()) change.title = subtask.title.trim();
+        if (old.status !== subtask.status) change.status = subtask.status;
+        next.push(Object.keys(change).length ? toSubtask(await patchSubtask(id, subtask.id, change)) : subtask);
+      }
+      await Promise.all([...oldById.keys()].map((subtaskId) => deleteSubtask(id, subtaskId)));
+      updated.subtasks = next;
+    } else {
+      updated.subtasks = current.subtasks;
+    }
+    applyTask(id, () => updated);
   },
-  remove(id: string) {
-    setState({ tasks: state.tasks.filter((t) => t.id !== id) });
+  async remove(id: string) {
+    await deleteTask(id);
+    setState({ tasks: state.tasks.filter((task) => task.id !== id) });
   },
-  toggle(id: string) {
-    setState({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, status: toggleStatus(t.status) } : t)) });
+  async toggle(id: string) {
+    const current = state.tasks.find((task) => task.id === id);
+    if (!current) return;
+    const updated = toTask(await patchTask(id, { status: current.status === 'DONE' ? 'TODO' : 'DONE' }));
+    updated.subtasks = current.subtasks;
+    applyTask(id, () => updated);
   },
-  toggleSub(id: string, subId: string) {
-    setState({
-      tasks: state.tasks.map((t) =>
-        t.id === id
-          ? { ...t, subtasks: t.subtasks.map((s: Subtask) => (s.id === subId ? { ...s, status: toggleStatus(s.status) } : s)) }
-          : t,
-      ),
-    });
+  async toggleSub(id: string, subId: string) {
+    const task = state.tasks.find((item) => item.id === id);
+    const subtask = task?.subtasks.find((item) => item.id === subId);
+    if (!subtask) return;
+    const updated = toSubtask(await patchSubtask(id, subId, { status: subtask.status === 'DONE' ? 'TODO' : 'DONE' }));
+    applyTask(id, (current) => ({ ...current, subtasks: current.subtasks.map((item) => item.id === subId ? updated : item) }));
   },
 };
 
 export const reminderActions = {
-  set(remindAt: string) {
-    setState({ reminder: { id: state.reminder?.id ?? newId(), remindAt, timeZone: 'Asia/Seoul', status: 'ACTIVE' } });
+  async setFromSession(sessionId: string, remindAt: string, timeZone: string) {
+    const dto = await putNextStartReminder(sessionId, remindAt, timeZone);
+    setState({ reminder: toReminder(dto.reminder) });
+    const scheduled = dto.reminder
+      ? await scheduleStartReminder(dto.reminder.id, dto.reminder.remindAt).catch(() => false)
+      : false;
+    return { reminder: dto.reminder, scheduled };
   },
-  cancel() {
+  async update(remindAt: string, timeZone: string) {
+    const current = state.reminder as ReminderDTO | null;
+    if (!current) return null;
+    const dto = await changeStartReminder(current, remindAt, timeZone);
+    setState({ reminder: toReminder(dto.reminder) });
+    if (dto.reminder) await scheduleStartReminder(dto.reminder.id, dto.reminder.remindAt).catch(() => false);
+    return dto.reminder;
+  },
+  async cancel() {
+    const current = state.reminder;
+    if (!current) return;
+    await deleteStartReminder(current.id);
+    await cancelStartReminder(current.id).catch(() => undefined);
     setState({ reminder: null });
+  },
+  async refresh() {
+    return refreshReminder();
   },
 };
 
-// TODO(API): 실제 로그인·토큰 확인으로 교체
 export const authActions = {
-  login() {
-    writeLoggedIn(true);
-    setState({ loggedIn: true });
+  async login() {
+    await initializeAppStore();
   },
-  logout() {
-    writeLoggedIn(false);
-    setState({ loggedIn: false });
+  async loginWithEmail(email: string, password: string) {
+    await loginEmail(email.trim(), password);
+    await initializeAppStore();
+  },
+  async registerWithEmail(email: string, password: string) {
+    await registerEmail(email.trim(), password);
+    await initializeAppStore();
+  },
+  async logout() {
+    await clearAccessToken();
+    setState({ loggedIn: false, tasks: [], reminder: null });
   },
 };

@@ -31,7 +31,7 @@ export default function ChatScreen() {
           <FriendToggleMenu enabled={enabled} onToggle={(id) => setEnabled((prev) => ({ ...prev, [id]: !prev[id] }))} />
         )}
       </View>
-      <ChatRoom />
+      <ChatRoom characterKeys={Object.entries(enabled).filter(([, value]) => value).map(([id]) => id as CharacterId)} />
     </View>
   );
 }

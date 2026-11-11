@@ -2,27 +2,39 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import { colors, fonts, fontSize, radius } from '@/constants/theme';
 import { studyActions } from '@/hooks/useStudySession';
-import { useMockStore } from '@/mocks/store';
+import { reminderActions, useMockStore } from '@/mocks/store';
+import { cancelStartReminder } from '@/services/localNotifications';
 import { isDone } from '@/types/task';
 import { formatDday, formatMonthDayTime } from '@/utils/date';
 
 export default function StudyStartScreen() {
   const insets = useSafeAreaInsets();
-  // TODO(API): 미완료 할 일 목록 조회
-  const tasks = useMockStore().tasks.filter((t) => !isDone(t));
+  const { tasks, reminder } = useMockStore();
+  const incompleteTasks = tasks.filter((t) => !isDone(t));
   const [selectedId, setSelectedId] = useState<string>();
+  const [starting, setStarting] = useState(false);
 
   // 할 일 선택 없이도 시작할 수 있다 (명세 ST-01)
-  const start = (taskId?: string) => {
-    studyActions.start(taskId);
-    router.replace('/study');
+  const start = async (taskId?: string) => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      await studyActions.start(taskId);
+      if (reminder) await cancelStartReminder(reminder.id).catch(() => undefined);
+      await reminderActions.refresh().catch(() => undefined);
+      router.replace('/study');
+    } catch (error) {
+      Alert.alert('공부를 시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    } finally {
+      setStarting(false);
+    }
   };
 
   return (
@@ -37,7 +49,7 @@ export default function StudyStartScreen() {
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <Text style={styles.sheetTitle}>뭐부터 같이 할까?</Text>
         <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-          {tasks.map((task) => {
+          {incompleteTasks.map((task) => {
             const selected = selectedId === task.id;
             return (
               <Pressable
@@ -56,8 +68,8 @@ export default function StudyStartScreen() {
             );
           })}
         </ScrollView>
-        <Button label="바로 시작하자!" size="md" disabled={!selectedId} onPress={() => start(selectedId)} />
-        <Button label="선택 없이 시작하자!" size="md" variant="outline" onPress={() => start()} />
+        <Button label="바로 시작하자!" size="md" disabled={!selectedId || starting} onPress={() => start(selectedId)} />
+        <Button label="선택 없이 시작하자!" size="md" variant="outline" disabled={starting} onPress={() => start()} />
       </View>
     </View>
   );

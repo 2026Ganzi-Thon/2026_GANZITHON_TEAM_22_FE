@@ -1,6 +1,6 @@
 // HM-02-alarm 알림 변경하기
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import DateTimeSheet from '@/components/common/DateTimeSheet';
 import Icon from '@/components/common/Icon';
@@ -19,14 +19,13 @@ export default function AlarmScreen() {
     <Screen header={<Header backLabel="홈" />}>
       <View style={styles.titleRow}>
         <SectionTitle title="다시 하기 알림" />
-        <HeaderEdit onPress={() => setSheetOpen(true)} />
+        {reminder?.status === 'ACTIVE' && <HeaderEdit onPress={() => setSheetOpen(true)} />}
       </View>
 
       {reminder ? (
         <View style={styles.row}>
           <Text style={styles.time}>{formatFullDateTime(reminder.remindAt)}</Text>
-          {/* TODO(API): 다음 시작 알림 취소 요청 + 로컬 예약 알림 취소 */}
-          <Pressable accessibilityRole="button" accessibilityLabel="알림 취소" onPress={reminderActions.cancel} hitSlop={8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="알림 취소" onPress={() => reminderActions.cancel().catch((error) => Alert.alert('알림을 취소하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))} hitSlop={8}>
             <Icon name="minusSmall" size={24} />
           </Pressable>
         </View>
@@ -42,9 +41,9 @@ export default function AlarmScreen() {
         confirmLabel="이 시간에 만나"
         initial={reminder?.remindAt}
         onConfirm={(iso) => {
-          // TODO(API): 다음 시작 알림 변경 요청
-          reminderActions.set(iso);
-          setSheetOpen(false);
+          reminderActions.update(iso, Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul')
+            .then(() => setSheetOpen(false))
+            .catch((error) => Alert.alert('알림을 변경하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'));
         }}
       />
     </Screen>

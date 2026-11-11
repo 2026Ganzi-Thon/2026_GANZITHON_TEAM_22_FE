@@ -1,52 +1,94 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
-// 스터디룸 공부 상태. 시간은 1초씩 더하지 않고 "시작 시각과의 차이"로 계산한다
-// (백그라운드·화면 잠금에도 틀어지지 않게). 목표 시간·자동 종료는 만들지 않는다.
-// TODO(API): 공부 세션 저장이 필요해지면 start/end 시점에 요청
+import { changeStudySession, getCurrentStudySession, startStudySession, type StudyDTO } from '@/services/backend';
+import { ApiError } from '@/utils/api';
 
 type Status = 'idle' | 'study' | 'rest';
 type Session = {
   status: Status;
   taskId?: string;
-  /** 지금까지 쌓인 공부 시간(ms) */
+  sessionId?: string;
+  version: number;
+  /** Server accumulated study seconds, converted to milliseconds. */
   accumulated: number;
-  /** 공부 중일 때 마지막으로 재개한 시각 */
+  /** Running start time supplied by the server. */
   resumedAt?: number;
 };
 
-let session: Session = { status: 'idle', accumulated: 0 };
+let session: Session = { status: 'idle', accumulated: 0, version: 0 };
 const listeners = new Set<() => void>();
 const set = (next: Session) => {
   session = next;
-  listeners.forEach((l) => l());
+  listeners.forEach((listener) => listener());
 };
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => listeners.delete(l);
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 };
 
-const elapsedOf = (s: Session, now = Date.now()) =>
-  s.accumulated + (s.status === 'study' && s.resumedAt ? now - s.resumedAt : 0);
+const elapsedOf = (value: Session, now = Date.now()) =>
+  value.accumulated + (value.status === 'study' && value.resumedAt ? Math.max(0, now - value.resumedAt) : 0);
+
+const fromDto = (dto: StudyDTO): Session => ({
+  status: dto.status === 'STUDYING' ? 'study' : dto.status === 'PAUSED' ? 'rest' : 'idle',
+  taskId: dto.taskId ?? undefined,
+  sessionId: dto.status === 'ENDED' ? undefined : dto.id,
+  version: dto.version,
+  accumulated: dto.studySeconds * 1000,
+  resumedAt: dto.status === 'STUDYING' && dto.runningStartedAt ? Date.parse(dto.runningStartedAt) : undefined,
+});
 
 export const studyActions = {
-  start(taskId?: string) {
-    set({ status: 'study', taskId, accumulated: 0, resumedAt: Date.now() });
+  restore(dto: StudyDTO | null) {
+    if (!dto || dto.status === 'ENDED') {
+      set({ status: 'idle', accumulated: 0, version: 0 });
+      return;
+    }
+    set(fromDto(dto));
   },
-  /** 잠깐 쉬기 (대화 열 때도 사용) */
-  pause() {
-    if (session.status !== 'study') return;
-    set({ ...session, status: 'rest', accumulated: elapsedOf(session), resumedAt: undefined });
+  async sync() {
+    const current = await getCurrentStudySession();
+    this.restore(current.studySession);
   },
-  /** 다시 시작하기 */
-  resume() {
-    if (session.status !== 'rest') return;
-    set({ ...session, status: 'study', resumedAt: Date.now() });
+  async start(taskId?: string) {
+    const dto = await startStudySession(taskId);
+    set(fromDto(dto));
+    return dto;
   },
-  linkTask(taskId: string) {
-    set({ ...session, taskId });
+  /** Pause while chatting or when the user taps the timer. */
+  async pause() {
+    if (session.status !== 'study' || !session.sessionId) return;
+    try {
+      const dto = await changeStudySession(session.sessionId, 'PAUSE', session.version);
+      set(fromDto(dto));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) await this.sync();
+      throw error;
+    }
   },
-  end() {
-    set({ status: 'idle', accumulated: 0 });
+  async resume() {
+    if (session.status !== 'rest' || !session.sessionId) return;
+    try {
+      const dto = await changeStudySession(session.sessionId, 'RESUME', session.version);
+      set(fromDto(dto));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) await this.sync();
+      throw error;
+    }
+  },
+  async end() {
+    if (!session.sessionId) {
+      set({ status: 'idle', accumulated: 0, version: 0 });
+      return null;
+    }
+    try {
+      const dto = await changeStudySession(session.sessionId, 'END', session.version);
+      set({ status: 'idle', accumulated: 0, version: dto.version });
+      return dto;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) await this.sync();
+      throw error;
+    }
   },
 };
 
@@ -54,20 +96,20 @@ export function useStudySession() {
   return useSyncExternalStore(subscribe, () => session, () => session);
 }
 
-/** 화면 표시용 경과 시간 (1초마다 갱신) */
+/** Display elapsed time from server state and wall clock; no client-side increment drift. */
 export function useElapsed() {
-  const s = useStudySession();
+  const value = useStudySession();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (s.status !== 'study') return;
+    if (value.status !== 'study') return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [s.status]);
-  return elapsedOf(s, s.status === 'study' ? now : undefined);
+  }, [value.status, value.sessionId]);
+  return elapsedOf(value, value.status === 'study' ? now : undefined);
 }
 
 export function formatElapsed(ms: number) {
   const total = Math.floor(ms / 1000);
-  const p = (n: number) => String(n).padStart(2, '0');
+  const p = (number: number) => String(number).padStart(2, '0');
   return `${p(Math.floor(total / 3600))}:${p(Math.floor((total % 3600) / 60))}:${p(total % 60)}`;
 }

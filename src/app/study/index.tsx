@@ -1,7 +1,7 @@
 // ST-02 스터디룸 (+ ST-03-exit 나가기 선택, ST-04 다음 시작 알림)
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DateTimeSheet from '@/components/common/DateTimeSheet';
@@ -22,15 +22,48 @@ export default function StudyRoomScreen() {
   const session = useStudySession();
   const task = useMockStore().tasks.find((t) => t.id === session.taskId);
   const [sheet, setSheet] = useState<Sheet>('none');
+  const [leaving, setLeaving] = useState(false);
   const resting = session.status === 'rest';
 
   // 나가면 타이머 종료. 할 일은 자동 완료되지 않는다 (명세)
-  const leave = (remindAt: string | null) => {
-    // TODO(API): 다음 시작 알림 저장 + 로컬 예약 알림 등록
-    if (remindAt) reminderActions.set(remindAt);
-    studyActions.end();
-    setSheet('none');
-    router.dismissTo('/');
+  const leave = async (remindAt: string | null) => {
+    if (leaving) return;
+    if (remindAt) {
+      const when = new Date(remindAt).getTime();
+      const latest = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      if (!Number.isFinite(when) || when <= Date.now() || when > latest) {
+        Alert.alert('알림 시각을 확인해줘', '다음 7일 안의 미래 시각으로 설정할 수 있어.');
+        return;
+      }
+    }
+    setLeaving(true);
+    let sessionEnded = false;
+    try {
+      const ended = await studyActions.end();
+      sessionEnded = true;
+      if (remindAt && ended) {
+        const result = await reminderActions.setFromSession(
+          ended.id,
+          remindAt,
+          Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul',
+        );
+        if (result.reminder && !result.scheduled) {
+          Alert.alert('알림을 저장했어', '기기 알림 권한을 허용하면 잠금 화면에서 받을 수 있어.');
+        }
+      }
+      setSheet('none');
+      router.dismissTo('/');
+    } catch (error) {
+      if (sessionEnded) {
+        setSheet('none');
+        router.dismissTo('/');
+        Alert.alert('공부는 종료했어', '다음 시작 알림을 저장하지 못했어. 홈에서 다시 설정해줘.');
+      } else {
+        Alert.alert('저장하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      }
+    } finally {
+      setLeaving(false);
+    }
   };
 
   return (
