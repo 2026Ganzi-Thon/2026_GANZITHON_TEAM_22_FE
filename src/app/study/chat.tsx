@@ -1,6 +1,6 @@
 // ST-03-chat 스터디룸 대화
 import { useEffect } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Header from '@/components/layout/Header';
@@ -10,6 +10,7 @@ import LoadingView from '@/components/common/LoadingView';
 import { studyActions, useStudySession } from '@/hooks/useStudySession';
 import { useCharacterSelection } from '@/hooks/useCharacterSelection';
 import { useMockStore } from '@/mocks/store';
+import { showAlert } from '@/utils/alert';
 
 export default function StudyChatScreen() {
   const insets = useSafeAreaInsets();
@@ -20,17 +21,15 @@ export default function StudyChatScreen() {
   // 대화하는 동안 공부 시간 일시정지, 닫으면 원래 상태로 (명세 ST-03 ②)
   useEffect(() => {
     const wasStudying = session.status === 'study';
-    let pauseSucceeded = false;
     const pausePromise = wasStudying
       ? studyActions.pause()
-          .then(() => { pauseSucceeded = true; })
-          .catch((error) => { Alert.alert('일시정지하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'); })
-      : Promise.resolve();
+          .catch((error) => { showAlert('일시정지하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'); })
+      : Promise.resolve(undefined);
     return () => {
       if (wasStudying) {
-        pausePromise.then(() => {
-          if (pauseSucceeded) {
-            return studyActions.resume().catch((error) => Alert.alert('다시 시작하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'));
+        void pausePromise.then((paused) => {
+          if (paused?.status === 'PAUSED') {
+            return studyActions.resume(paused.id).catch((error) => showAlert('다시 시작하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'));
           }
         });
       }

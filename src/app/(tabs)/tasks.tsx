@@ -1,7 +1,7 @@
 // TK-01 할 일 목록 (진행 중 / 완료 탭)
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Icon from '@/components/common/Icon';
@@ -9,6 +9,7 @@ import { colors, fonts, fontSize, radius } from '@/constants/theme';
 import TaskCard from '@/features/tasks/TaskCard';
 import { taskActions, useMockStore } from '@/mocks/store';
 import { isDone } from '@/types/task';
+import { showAlert } from '@/utils/alert';
 
 type Tab = 'doing' | 'done';
 
@@ -44,7 +45,7 @@ export default function TasksScreen() {
               <TaskCard
                 key={task.id}
                 task={task}
-                onToggle={() => taskActions.toggle(task.id).catch((error) => Alert.alert('수정하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
+                onToggle={() => taskActions.toggle(task.id).catch((error) => showAlert('수정하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
                 onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
               />
             ))

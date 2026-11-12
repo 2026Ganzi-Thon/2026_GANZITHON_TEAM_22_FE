@@ -56,7 +56,7 @@ const toTask = (dto: TaskDTO): Task => ({
 const toSubtask = (dto: SubtaskDTO): Subtask => ({ id: dto.id, title: dto.title, status: dto.status });
 const toReminder = (dto: ReminderDTO | null): Reminder | null => dto ? ({
   id: dto.id,
-  sessionId: dto.sessionId,
+  sessionId: dto.sourceSessionId,
   remindAt: dto.remindAt,
   timeZone: dto.timeZone,
   status: dto.status,
@@ -85,20 +85,28 @@ export async function refreshTasks() {
 
 export async function loadTaskDetail(taskId: string) {
   const task = toTask(await getTask(taskId));
-  setState({ tasks: state.tasks.map((item) => item.id === taskId ? task : item) });
+  const tasks = state.tasks.some((item) => item.id === taskId)
+    ? state.tasks.map((item) => item.id === taskId ? task : item)
+    : [...state.tasks, task];
+  setState({ tasks });
   return task;
 }
 
 async function refreshReminder() {
   const { reminder } = await getCurrentReminder();
   setState({ reminder: toReminder(reminder) });
-  try {
-    await clearStaleStartReminders(reminder?.status === 'ACTIVE' ? reminder.id : undefined);
-    if (reminder?.status === 'ACTIVE') await scheduleStartReminder(reminder.id, reminder.remindAt, false);
-  } catch {
-    // Server reminder state remains authoritative if the OS notification service is unavailable.
-  }
+  await syncLocalReminder(reminder);
   return reminder;
+}
+
+async function syncLocalReminder(reminder: ReminderDTO | null, requestPermission = false) {
+  try {
+    const active = reminder?.status === 'ACTIVE' ? reminder : null;
+    await clearStaleStartReminders(active?.id);
+    return active ? await scheduleStartReminder(active.id, active.remindAt, requestPermission) : false;
+  } catch {
+    return false;
+  }
 }
 
 let initializePromise: Promise<void> | null = null;
@@ -113,6 +121,7 @@ export function initializeAppStore() {
         getCurrentReminder(),
         getCurrentStudySession(),
       ]);
+      studyActions.restore(studyResult.studySession);
       setState({
         tasks: taskResult.items.map(toTask),
         reminder: toReminder(reminderResult.reminder),
@@ -120,15 +129,7 @@ export function initializeAppStore() {
         loading: false,
         error: null,
       });
-      studyActions.restore(studyResult.studySession);
-      try {
-        await clearStaleStartReminders(reminderResult.reminder?.status === 'ACTIVE' ? reminderResult.reminder.id : undefined);
-        if (reminderResult.reminder?.status === 'ACTIVE') {
-          await scheduleStartReminder(reminderResult.reminder.id, reminderResult.reminder.remindAt, false);
-        }
-      } catch {
-        // The server reminder can still be edited or canceled without local notifications.
-      }
+      await syncLocalReminder(reminderResult.reminder);
     } catch (error) {
       setState({ loading: false, error: error instanceof Error ? error.message : '서버에 연결하지 못했어요.' });
       throw error;
@@ -161,7 +162,7 @@ export const taskActions = {
   },
   async update(id: string, patch: Partial<Omit<Task, 'id'>>) {
     const current = state.tasks.find((task) => task.id === id);
-    if (!current) return;
+    if (!current) throw new Error('할 일을 찾을 수 없어.');
     const dtoPatch: Partial<Pick<TaskDTO, 'title' | 'description' | 'dueDate' | 'status'>> = {};
     if (patch.title !== undefined) dtoPatch.title = patch.title;
     if (patch.dueAt !== undefined) dtoPatch.dueDate = dateForApi(patch.dueAt);
@@ -216,17 +217,15 @@ export const reminderActions = {
   async setFromSession(sessionId: string, remindAt: string, timeZone: string) {
     const dto = await putNextStartReminder(sessionId, remindAt, timeZone);
     setState({ reminder: toReminder(dto.reminder) });
-    const scheduled = dto.reminder
-      ? await scheduleStartReminder(dto.reminder.id, dto.reminder.remindAt).catch(() => false)
-      : false;
+    const scheduled = await syncLocalReminder(dto.reminder, true);
     return { reminder: dto.reminder, scheduled };
   },
   async update(remindAt: string, timeZone: string) {
-    const current = state.reminder as ReminderDTO | null;
+    const current = state.reminder;
     if (!current) return null;
     const dto = await changeStartReminder(current, remindAt, timeZone);
     setState({ reminder: toReminder(dto.reminder) });
-    if (dto.reminder) await scheduleStartReminder(dto.reminder.id, dto.reminder.remindAt).catch(() => false);
+    await syncLocalReminder(dto.reminder, true);
     return dto.reminder;
   },
   async cancel() {

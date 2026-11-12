@@ -2,7 +2,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Badge from '@/components/common/Badge';
@@ -13,6 +13,7 @@ import { reminderActions, useMockStore } from '@/mocks/store';
 import { cancelStartReminder } from '@/services/localNotifications';
 import { isDone } from '@/types/task';
 import { formatDday, formatMonthDay } from '@/utils/date';
+import { showAlert } from '@/utils/alert';
 
 export default function StudyStartScreen() {
   const insets = useSafeAreaInsets();
@@ -31,7 +32,7 @@ export default function StudyStartScreen() {
       await reminderActions.refresh().catch(() => undefined);
       router.replace('/study');
     } catch (error) {
-      Alert.alert('공부를 시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('공부를 시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     } finally {
       setStarting(false);
     }

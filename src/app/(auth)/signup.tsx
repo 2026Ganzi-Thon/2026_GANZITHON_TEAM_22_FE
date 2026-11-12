@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Button from '@/components/common/Button';
 import { colors, fonts, fontSize } from '@/constants/theme';
@@ -8,6 +8,7 @@ import AgreeCheck from '@/features/auth/AgreeCheck';
 import AuthField from '@/features/auth/AuthField';
 import AuthLayout from '@/features/auth/AuthLayout';
 import { authActions } from '@/mocks/store';
+import { showAlert } from '@/utils/alert';
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
@@ -19,20 +20,20 @@ export default function SignupScreen() {
   const submit = async () => {
     if (loading) return;
     if (!email.trim() || !password) {
-      Alert.alert('가입 정보를 입력해줘', '이메일과 비밀번호를 확인해줘.');
+      showAlert('가입 정보를 입력해줘', '이메일과 비밀번호를 확인해줘.');
       return;
     }
     if (!termsAccepted || !privacyAccepted) {
-      Alert.alert('약관 동의가 필요해', '이용약관과 개인정보 수집 및 이용에 동의해줘.');
+      showAlert('약관 동의가 필요해', '이용약관과 개인정보 수집 및 이용에 동의해줘.');
       return;
     }
     setLoading(true);
     try {
       await authActions.registerWithEmail(email, password);
-      Alert.alert('가입했어', '이메일 인증은 아직 제공되지 않아. 바로 시작할 수 있어.');
+      showAlert('가입했어', '이메일 인증은 아직 제공되지 않아. 바로 시작할 수 있어.');
       router.replace('/');
     } catch (error) {
-      Alert.alert('가입하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('가입하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     } finally {
       setLoading(false);
     }

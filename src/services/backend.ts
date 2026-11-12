@@ -59,7 +59,7 @@ export type StudyDTO = {
 };
 export type ReminderDTO = {
   id: string;
-  sessionId: string;
+  sourceSessionId: string;
   remindAt: string;
   timeZone: string;
   status: 'ACTIVE' | 'CANCELED' | 'EXPIRED';
@@ -172,7 +172,7 @@ export const putNextStartReminder = (sessionId: string, remindAt: string, timeZo
   });
 
 export const changeStartReminder = (
-  reminder: ReminderDTO,
+  reminder: Pick<ReminderDTO, 'id' | 'remindAt' | 'timeZone'>,
   remindAt: string,
   timeZone: string,
 ) => request<ReminderCurrentDTO>(`start-reminders/${encodeURIComponent(reminder.id)}`, {
@@ -205,13 +205,14 @@ export type ExchangeDTO = {
   finishedAt: string | null;
   content?: string;
 };
-export type ChatHistoryPageDTO = { items: ExchangeDTO[]; nextCursor: string | null };
+export type ChatHistoryItemDTO = Omit<ExchangeDTO, 'id' | 'content'> & { content: string };
+export type ChatHistoryPageDTO = { items: ChatHistoryItemDTO[]; nextCursor: string | null };
 export type ChatUsageDTO = {
   timeZone: string;
   daily: Record<string, unknown>;
   monthly: Record<string, unknown>;
   dailyRequestLimit: number;
-  availability: Record<string, unknown>;
+  availability: string;
 };
 
 export function createExchange(input: {
@@ -236,7 +237,8 @@ export function createExchange(input: {
       const code = error instanceof ApiError && typeof error.body === 'object' && error.body && 'code' in error.body
         ? String(error.body.code)
         : '';
-      const shouldRecover = status === 0 || status >= 500 || (status === 409 && code === 'REQUEST_IN_PROGRESS');
+      const shouldRecover = code !== 'CHAT_NOT_CONFIGURED'
+        && (status === 0 || status >= 500 || (status === 409 && code === 'REQUEST_IN_PROGRESS'));
       if (shouldRecover) {
         try {
           const recovered = await recoverExchange(input.clientRequestId);

@@ -43,9 +43,12 @@ export async function scheduleStartReminder(reminderId: string, remindAt: string
       title: '다시 같이 공부할 시간이야',
       body: '준비되면 우리랑 다시 시작하자.',
       data: { reminderId },
+    },
+    trigger: {
+      type: SchedulableTriggerInputTypes.DATE,
+      date,
       ...(Platform.OS === 'android' ? { channelId: 'study-reminders' } : {}),
     },
-    trigger: { type: SchedulableTriggerInputTypes.DATE, date },
   });
   return true;
 }

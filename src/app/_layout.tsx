@@ -9,13 +9,14 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AnimatedSplash from '@/components/layout/AnimatedSplash';
 import { colors, WEB_APP_MAX_WIDTH } from '@/constants/theme';
 import { studyActions } from '@/hooks/useStudySession';
-import { refreshTasks, reminderActions } from '@/mocks/store';
+import { refreshTasks, reminderActions, useMockStore } from '@/mocks/store';
 
 SplashScreen.preventAutoHideAsync();
 
 const SPLASH_MIN_MS = 1500;
 
 export default function RootLayout() {
+  const { loggedIn, loading } = useMockStore();
   const [fontsLoaded] = useFonts({
     'Dunggeunmiso-B': require('@/assets/fonts/Dunggeunmiso-B.otf'),
     'Dunggeunmiso-R': require('@/assets/fonts/Dunggeunmiso-R.otf'),
@@ -30,6 +31,7 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (!loggedIn || loading) return;
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') return;
       studyActions.sync().catch(() => undefined);
@@ -37,7 +39,7 @@ export default function RootLayout() {
       reminderActions.refresh().catch(() => undefined);
     });
     return () => subscription.remove();
-  }, []);
+  }, [loading, loggedIn]);
 
   // 네이티브 스플래시와 같은 이미지를 그 위에 띄워두고, 폰트 로드 + 1.5초 뒤 홈으로
   useEffect(() => {

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 
 import ChatInput from '@/features/chat/ChatInput';
 import MessageItem from '@/features/chat/MessageItem';
 import { CHARACTER_IDS, type CharacterId } from '@/constants/characters';
 import { colors, fonts } from '@/constants/theme';
-import { createExchange, getChatHistory, getChatUsage, newClientRequestId, type ExchangeDTO, type ExchangeUtteranceDTO } from '@/services/backend';
+import { createExchange, getChatHistory, getChatUsage, newClientRequestId, type ChatHistoryItemDTO, type ExchangeDTO, type ExchangeUtteranceDTO } from '@/services/backend';
 import type { ChatMessage } from '@/types/chat';
+import { ApiError } from '@/utils/api';
+import { showAlert } from '@/utils/alert';
 
 type Props = {
   bottomInset?: number;
@@ -30,12 +32,12 @@ function toMessage(utterance: ExchangeUtteranceDTO, fallback: CharacterId, index
   return { id: value.id ?? `reply-${index}-${newClientRequestId()}`, sender, text: text.trim() };
 }
 
-function messagesFromHistory(exchange: ExchangeDTO, fallback: CharacterId): ChatMessage[] {
+function messagesFromHistory(exchange: ChatHistoryItemDTO): ChatMessage[] {
   const userMessage = exchange.content?.trim()
-    ? [{ id: `${exchange.id}-user`, sender: 'me' as const, text: exchange.content.trim() }]
+    ? [{ id: `${exchange.clientRequestId}-user`, sender: 'me' as const, text: exchange.content.trim() }]
     : [];
   const replies = Array.isArray(exchange.utterances)
-    ? exchange.utterances.map((utterance, index) => toMessage(utterance, fallback, index)).filter((item): item is ChatMessage => item !== null)
+    ? exchange.utterances.map((utterance, index) => toMessage(utterance, 'joy', index)).filter((item): item is ChatMessage => item !== null)
     : [];
   return [...userMessage, ...replies];
 }
@@ -44,14 +46,20 @@ function isFailed(exchange: ExchangeDTO) {
   return exchange.status.toUpperCase() === 'FAILED' || Boolean(exchange.failureCode);
 }
 
-export default function ChatRoom({ bottomInset = 0, studySessionId, characterKeys = CHARACTER_IDS }: Props) {
+export default function ChatRoom(props: Props) {
+  return <ChatConversation key={props.studySessionId ?? 'home'} {...props} />;
+}
+
+function ChatConversation({ bottomInset = 0, studySessionId, characterKeys = CHARACTER_IDS }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [dailyRequestLimit, setDailyRequestLimit] = useState<number | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const previousRequestId = useRef<string | null>(null);
   const inFlight = useRef(false);
   const waitingId = messages.find((message) => message.pending)?.id;
   const fallbackCharacter = characterKeys[0] ?? 'joy';
+  const contextId = studySessionId ?? null;
 
   useEffect(() => {
     let active = true;
@@ -62,11 +70,14 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
       .then(({ items }) => {
         if (!active) return;
         const newestFirst = [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        previousRequestId.current = newestFirst[0]?.clientRequestId ?? null;
-        setMessages(newestFirst.reverse().flatMap((item) => messagesFromHistory(item, fallbackCharacter)));
+        const latestInContext = newestFirst.find((item) => item.studySessionId === contextId);
+        if (latestInContext?.status === 'SUCCEEDED' && !latestInContext.failureCode) {
+          previousRequestId.current = latestInContext.clientRequestId;
+        }
+        setMessages(newestFirst.reverse().flatMap(messagesFromHistory));
       })
       .catch((error) => {
-        if (active) Alert.alert('대화 기록을 불러오지 못했어', error instanceof Error ? error.message : '새 대화는 계속할 수 있어.');
+        if (active) showAlert('대화 기록을 불러오지 못했어', error instanceof Error ? error.message : '새 대화는 계속할 수 있어.');
       })
       .finally(() => {
         if (active) setLoadingHistory(false);
@@ -74,11 +85,12 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
     return () => {
       active = false;
     };
-  }, [fallbackCharacter]);
+  }, [contextId]);
 
   const send = async (content: string) => {
     if (inFlight.current || loadingHistory) return;
     inFlight.current = true;
+    setSendError(null);
     const clientRequestId = newClientRequestId();
     const pendingId = newClientRequestId();
     setMessages((current) => [
@@ -91,11 +103,13 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
       const exchange = await createExchange({
         clientRequestId,
         content,
-        studySessionId: studySessionId ?? null,
+        studySessionId: contextId,
         previousRequestId: previousRequestId.current,
         characterKeys: characterKeys.map((key) => key.toUpperCase()),
       });
-      previousRequestId.current = exchange.clientRequestId;
+      previousRequestId.current = exchange.status === 'SUCCEEDED' && !exchange.failureCode
+        ? exchange.clientRequestId
+        : null;
       if (isFailed(exchange)) {
         throw new Error(exchange.failureCode ? `답변을 만들지 못했어 (${exchange.failureCode}).` : '답변을 만들지 못했어.');
       }
@@ -109,7 +123,13 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
       }));
     } catch (error) {
       setMessages((current) => current.filter((message) => message.id !== pendingId));
-      Alert.alert('대화를 보내지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      const body = error instanceof ApiError ? error.body : null;
+      const code = body && typeof body === 'object' && 'code' in body ? body.code : null;
+      if (code === 'INVALID_PREVIOUS_EXCHANGE') previousRequestId.current = null;
+      const message = code === 'CHAT_NOT_CONFIGURED'
+        ? '서버에서 AI 답변을 준비 중이야.'
+        : error instanceof Error ? error.message : '잠시 후 다시 시도해줘.';
+      setSendError(message);
     } finally {
       inFlight.current = false;
     }
@@ -126,6 +146,7 @@ export default function ChatRoom({ bottomInset = 0, studySessionId, characterKey
         ListEmptyComponent={!loadingHistory ? <Text style={styles.empty}>친구들에게 먼저 이야기해 봐.</Text> : undefined}
         contentContainerStyle={styles.list}
       />
+      {sendError && <Text accessibilityRole="alert" style={styles.sendError}>{sendError}</Text>}
       <ChatInput onSend={send} disabled={loadingHistory || Boolean(waitingId)} />
       <View style={{ height: bottomInset + 12 }} />
     </KeyboardAvoidingView>
@@ -137,4 +158,5 @@ const styles = StyleSheet.create({
   list: { flexGrow: 1, justifyContent: 'flex-end', gap: 14, paddingVertical: 12 },
   empty: { alignSelf: 'center', marginVertical: 16, fontFamily: fonts.body, fontSize: 14, color: colors.textSub },
   usage: { alignSelf: 'flex-end', paddingTop: 4, fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },
+  sendError: { marginBottom: 8, fontFamily: fonts.body, fontSize: 14, color: colors.textSub },
 });

@@ -2,13 +2,14 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 const TOKEN_KEY = 'haeboyang.accessToken';
+let webSessionToken: string | null = null;
 
 export async function readAccessToken() {
   if (Platform.OS === 'web') {
     try {
-      return globalThis.localStorage?.getItem(TOKEN_KEY) ?? null;
+      return webSessionToken ?? globalThis.localStorage?.getItem(TOKEN_KEY) ?? null;
     } catch {
-      return null;
+      return webSessionToken;
     }
   }
   return SecureStore.getItemAsync(TOKEN_KEY);
@@ -16,8 +17,12 @@ export async function readAccessToken() {
 
 export async function writeAccessToken(token: string) {
   if (Platform.OS === 'web') {
+    webSessionToken = token;
     try {
-      globalThis.localStorage?.setItem(TOKEN_KEY, token);
+      if (globalThis.localStorage) {
+        globalThis.localStorage.setItem(TOKEN_KEY, token);
+        webSessionToken = null;
+      }
     } catch {
       // Private browsing may disable local storage; the in-memory session still works.
     }
@@ -28,6 +33,7 @@ export async function writeAccessToken(token: string) {
 
 export async function clearAccessToken() {
   if (Platform.OS === 'web') {
+    webSessionToken = null;
     try {
       globalThis.localStorage?.removeItem(TOKEN_KEY);
     } catch {

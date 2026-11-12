@@ -11,7 +11,7 @@ type Session = {
   version: number;
   /** Server accumulated study seconds, converted to milliseconds. */
   accumulated: number;
-  /** Running start time supplied by the server. */
+  /** Local time when we received the server's elapsed total. */
   resumedAt?: number;
 };
 
@@ -35,7 +35,7 @@ const fromDto = (dto: StudyDTO): Session => ({
   sessionId: dto.status === 'ENDED' ? undefined : dto.id,
   version: dto.version,
   accumulated: dto.studySeconds * 1000,
-  resumedAt: dto.status === 'STUDYING' && dto.runningStartedAt ? Date.parse(dto.runningStartedAt) : undefined,
+  resumedAt: dto.status === 'STUDYING' ? Date.now() : undefined,
 });
 
 export const studyActions = {
@@ -47,8 +47,9 @@ export const studyActions = {
     set(fromDto(dto));
   },
   async sync() {
+    const before = session;
     const current = await getCurrentStudySession();
-    this.restore(current.studySession);
+    if (session === before) this.restore(current.studySession);
   },
   async start(taskId?: string) {
     const dto = await startStudySession(taskId);
@@ -61,13 +62,15 @@ export const studyActions = {
     try {
       const dto = await changeStudySession(session.sessionId, 'PAUSE', session.version);
       set(fromDto(dto));
+      return dto;
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) await this.sync();
       throw error;
     }
   },
-  async resume() {
-    if (session.status !== 'rest' || !session.sessionId) return;
+  async resume(expectedSessionId?: string) {
+    if (session.status !== 'rest' || !session.sessionId
+      || (expectedSessionId && session.sessionId !== expectedSessionId)) return;
     try {
       const dto = await changeStudySession(session.sessionId, 'RESUME', session.version);
       set(fromDto(dto));

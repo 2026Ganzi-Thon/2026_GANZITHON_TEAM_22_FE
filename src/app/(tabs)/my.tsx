@@ -1,7 +1,7 @@
 // MY-01 내 정보
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CroppedImage from '@/components/common/CroppedImage';
@@ -19,6 +19,7 @@ import {
 } from '@/services/localNotifications';
 import { useMockStore } from '@/mocks/store';
 import { writePreference } from '@/utils/preferences';
+import { showAlert } from '@/utils/alert';
 
 const NOTIFICATIONS_ENABLED_KEY = 'notificationsEnabled';
 
@@ -28,22 +29,26 @@ export default function MyScreen() {
   const [profile, setProfile] = useState<MeDTO | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileAttempt, setProfileAttempt] = useState(0);
   const [notify, setNotify] = useState(false);
   const [notifyLoading, setNotifyLoading] = useState(true);
 
-  const loadProfile = useCallback(async () => {
+  useEffect(() => {
+    let active = true;
+    getMe()
+      .then((value) => { if (active) setProfile(value); })
+      .catch((error: unknown) => {
+        if (active) setProfileError(error instanceof Error ? error.message : '내 정보를 불러오지 못했어.');
+      })
+      .finally(() => { if (active) setProfileLoading(false); });
+    return () => { active = false; };
+  }, [profileAttempt]);
+
+  const retryProfile = () => {
     setProfileLoading(true);
     setProfileError(null);
-    try {
-      setProfile(await getMe());
-    } catch (error) {
-      setProfileError(error instanceof Error ? error.message : '내 정보를 불러오지 못했어.');
-    } finally {
-      setProfileLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void loadProfile(); }, [loadProfile]);
+    setProfileAttempt((attempt) => attempt + 1);
+  };
 
   useEffect(() => {
     let active = true;
@@ -66,7 +71,7 @@ export default function MyScreen() {
       if (enabled) {
         const granted = await requestLocalNotificationPermission();
         if (!granted) {
-          Alert.alert('알림 권한이 필요해', '기기 설정에서 알림을 허용하면 공부 알림을 받을 수 있어.');
+          showAlert('알림 권한이 필요해', '기기 설정에서 알림을 허용하면 공부 알림을 받을 수 있어.');
           return;
         }
         await writePreference(NOTIFICATIONS_ENABLED_KEY, true);
@@ -77,7 +82,7 @@ export default function MyScreen() {
       }
       setNotify(enabled);
     } catch (error) {
-      Alert.alert('알림 설정을 바꾸지 못했어', error instanceof Error ? error.message : '다시 시도해줘.');
+      showAlert('알림 설정을 바꾸지 못했어', error instanceof Error ? error.message : '다시 시도해줘.');
     }
   };
 
@@ -94,7 +99,7 @@ export default function MyScreen() {
         {profileLoading
           ? <LoadingView message="내 정보를 불러오는 중이야..." />
           : profileError
-            ? <ErrorView message={profileError} onRetry={() => { void loadProfile(); }} />
+            ? <ErrorView message={profileError} onRetry={retryProfile} />
             : <>
                 <View style={styles.nameRow}>
                   <Text style={styles.name}>{profileName}</Text>

@@ -1,7 +1,7 @@
 // HM-02-detail 할 일 자세히 보기 (+ HM-03-done: 추가 직후, created=1)
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import LoadingView from '@/components/common/LoadingView';
@@ -15,6 +15,7 @@ import { loadTaskDetail, taskActions, useMockStore } from '@/mocks/store';
 import { isDone } from '@/types/task';
 import { formatDotDate } from '@/utils/date';
 import { goBack } from '@/utils/navigation';
+import { showAlert } from '@/utils/alert';
 
 export default function TaskDetailScreen() {
   const { id, created } = useLocalSearchParams<{ id: string; created?: string }>();
@@ -26,7 +27,7 @@ export default function TaskDetailScreen() {
   useEffect(() => {
     if (!id) return;
     loadTaskDetail(id)
-      .catch((error) => Alert.alert('할 일을 불러오지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.'))
+      .catch((error) => showAlert('할 일을 불러오지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.'))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -47,7 +48,7 @@ export default function TaskDetailScreen() {
       await taskActions.update(task.id, { status: 'DONE' });
       goBack();
     } catch (error) {
-      Alert.alert('완료 처리하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('완료 처리하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     }
   };
   const remove = async () => {
@@ -56,7 +57,7 @@ export default function TaskDetailScreen() {
       setConfirmDelete(false);
       goBack();
     } catch (error) {
-      Alert.alert('삭제하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('삭제하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     }
   };
 
@@ -85,7 +86,7 @@ export default function TaskDetailScreen() {
                 key={s.id}
                 title={s.title}
                 done={isDone(s)}
-                onToggle={() => taskActions.toggleSub(task.id, s.id).catch((error) => Alert.alert('수정하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
+                onToggle={() => taskActions.toggleSub(task.id, s.id).catch((error) => showAlert('수정하지 못했어', error instanceof Error ? error.message : '다시 시도해줘.'))}
               />
             ))}
           </View>

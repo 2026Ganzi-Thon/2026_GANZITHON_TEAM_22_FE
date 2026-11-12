@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Button from '@/components/common/Button';
 import { colors, fonts, fontSize } from '@/constants/theme';
 import AuthField from '@/features/auth/AuthField';
 import AuthLayout from '@/features/auth/AuthLayout';
 import { authActions } from '@/mocks/store';
+import { showAlert } from '@/utils/alert';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -16,7 +17,7 @@ export default function LoginScreen() {
   const submit = async () => {
     if (loading) return;
     if (!email.trim() || !password) {
-      Alert.alert('로그인 정보를 입력해줘', '이메일과 비밀번호를 확인해줘.');
+      showAlert('로그인 정보를 입력해줘', '이메일과 비밀번호를 확인해줘.');
       return;
     }
     setLoading(true);
@@ -24,7 +25,7 @@ export default function LoginScreen() {
       await authActions.loginWithEmail(email, password);
       router.replace('/');
     } catch (error) {
-      Alert.alert('로그인하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('로그인하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     } finally {
       setLoading(false);
     }
@@ -37,7 +38,7 @@ export default function LoginScreen() {
       await authActions.login();
       router.replace('/');
     } catch (error) {
-      Alert.alert('시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     } finally {
       setLoading(false);
     }

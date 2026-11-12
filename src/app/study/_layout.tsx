@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
+import AppSession from '@/components/layout/AppSession';
 
 export default function Layout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <AppSession><Stack screenOptions={{ headerShown: false }} /></AppSession>;
 }

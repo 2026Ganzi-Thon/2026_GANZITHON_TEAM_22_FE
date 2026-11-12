@@ -29,9 +29,13 @@ export default function Header({ backLabel, onBack, right }: Props) {
 }
 
 // 헤더 오른쪽 코랄 버튼 (완료 / 삭제)
-export function HeaderAction({ label, onPress }: { label: string; onPress: () => void }) {
+export function HeaderAction({ label, onPress, disabled = false }: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.action}>
+    <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[styles.action, disabled && styles.disabled]}>
       <Text style={styles.actionLabel}>{label}</Text>
     </Pressable>
   );
@@ -87,4 +91,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     color: colors.surface,
   },
+  disabled: { opacity: 0.5 },
 });

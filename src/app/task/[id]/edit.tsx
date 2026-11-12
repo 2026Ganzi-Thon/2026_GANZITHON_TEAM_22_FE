@@ -1,51 +1,76 @@
 // HM-03-edit 할 일 수정하기
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
 
+import ErrorView from '@/components/common/ErrorView';
 import LoadingView from '@/components/common/LoadingView';
 import Header, { HeaderAction } from '@/components/layout/Header';
 import Screen from '@/components/layout/Screen';
 import TaskForm, { type TaskFormValue } from '@/features/tasks/TaskForm';
-import { loadTaskDetail, taskActions, useMockStore } from '@/mocks/store';
+import { loadTaskDetail, taskActions } from '@/mocks/store';
+import { showAlert } from '@/utils/alert';
 import { goBack } from '@/utils/navigation';
 
 export default function TaskEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const task = useMockStore().tasks.find((t) => t.id === id);
-  const [loading, setLoading] = useState(true);
-  const [value, setValue] = useState<TaskFormValue>({
-    title: task?.title ?? '',
-    dueAt: task?.dueAt,
-    subtasks: task?.subtasks ?? [],
-  });
+  if (!id) return <Screen header={<Header backLabel="홈" />}><ErrorView message="할 일을 찾을 수 없어." /></Screen>;
+  return <TaskEditor key={id} id={id} />;
+}
+
+function TaskEditor({ id }: { id: string }) {
+  const [value, setValue] = useState<TaskFormValue | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   useEffect(() => {
-    if (!id) return;
+    let active = true;
     loadTaskDetail(id)
-      .then((loaded) => setValue({ title: loaded.title, dueAt: loaded.dueAt, subtasks: loaded.subtasks }))
-      .catch((error) => Alert.alert('할 일을 불러오지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.'))
-      .finally(() => setLoading(false));
-  }, [id]);
+      .then((loaded) => {
+        if (active) setValue({ title: loaded.title, dueAt: loaded.dueAt, subtasks: loaded.subtasks });
+      })
+      .catch((error: unknown) => {
+        if (active) setLoadError(error instanceof Error ? error.message : '할 일을 불러오지 못했어.');
+      });
+    return () => { active = false; };
+  }, [id, attempt]);
+
+  const reload = () => {
+    setValue(null);
+    setLoadError(null);
+    setAttempt((current) => current + 1);
+  };
 
   const save = async () => {
-    if (!task || !value.title.trim()) return;
+    if (savingRef.current || !value?.title.trim()) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
-      await taskActions.update(task.id, {
+      await taskActions.update(id, {
         title: value.title.trim(),
         dueAt: value.dueAt,
         subtasks: value.subtasks.filter((s) => s.title.trim()),
       });
       goBack();
     } catch (error) {
-      Alert.alert('수정하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+      showAlert('수정하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
-  if (loading) return <Screen header={<Header backLabel="홈" />}><LoadingView /></Screen>;
+  if (!value) {
+    return (
+      <Screen header={<Header backLabel="홈" />}>
+        {loadError ? <ErrorView message={loadError} onRetry={reload} /> : <LoadingView />}
+      </Screen>
+    );
+  }
 
   return (
-    <Screen header={<Header backLabel="홈" right={<HeaderAction label="완료" onPress={save} />} />}>
+    <Screen header={<Header backLabel="홈" right={<HeaderAction label="완료" onPress={save} disabled={saving} />} />}>
       <TaskForm mode="edit" value={value} onChange={setValue} />
     </Screen>
   );
