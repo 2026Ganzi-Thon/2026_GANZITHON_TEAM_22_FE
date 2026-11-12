@@ -26,7 +26,7 @@ export default function TodoSection({ tasks, onToggleTask, onPressTask, onPressA
       </View>
 
       {/* 할 일이 많으면 카드 안에서 스크롤 */}
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.list, tasks.length === 0 && styles.listEmpty]} showsVerticalScrollIndicator={false}>
         {tasks.length === 0 ? (
           <Text style={styles.empty}>할 일이 없어도 같이 시작할 수 있어!</Text>
         ) : (
@@ -89,8 +89,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingBottom: 4,
   },
+  listEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   empty: {
-    marginTop: 24,
     textAlign: 'center',
     fontFamily: fonts.body,
     fontSize: fontSize.md,

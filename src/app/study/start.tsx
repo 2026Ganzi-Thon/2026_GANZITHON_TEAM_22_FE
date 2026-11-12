@@ -2,7 +2,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Badge from '@/components/common/Badge';
@@ -15,12 +15,16 @@ import { isDone } from '@/types/task';
 import { formatDday, formatMonthDay } from '@/utils/date';
 import { showAlert } from '@/utils/alert';
 
+const HERO_HEIGHT = 475;
+
 export default function StudyStartScreen() {
   const insets = useSafeAreaInsets();
   const { tasks, reminder } = useMockStore();
   const incompleteTasks = tasks.filter((t) => !isDone(t));
   const [selectedId, setSelectedId] = useState<string>();
   const [starting, setStarting] = useState(false);
+  // 할 일이 적어도 그림 아래 빈 곳이 없게 시트를 그림 끝까지 늘린다
+  const { height } = useWindowDimensions();
 
   // 할 일 선택 없이도 시작할 수 있다 (명세 ST-01)
   const start = async (taskId?: string) => {
@@ -40,16 +44,22 @@ export default function StudyStartScreen() {
 
   return (
     <View style={styles.screen}>
-      <Image source={require('@/assets/images/backgrounds/home-hero.png')} style={styles.hero} contentFit="cover" />
+      <Image
+        source={require('@/assets/images/backgrounds/home-hero.png')}
+        style={styles.hero}
+        contentFit="cover"
+      />
       <View style={[styles.heroText, { top: Math.max(insets.top, 70) }]}>
         {/* 홈(HM-01)과 같은 haebo 로고 */}
         <Image source={require('@/assets/images/logo/haebo-wordmark.svg')} style={styles.logo} contentFit="contain" />
         <Text style={styles.subtitle}>{'일단 펼쳐볼까?\n우리도 같이 할게'}</Text>
       </View>
 
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+      <View
+        style={[styles.sheet, { minHeight: height - HERO_HEIGHT + radius.tabBar, paddingBottom: insets.bottom + 16 }]}>
         <Text style={styles.sheetTitle}>뭐부터 같이 할까?</Text>
-        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+        <ScrollView style={styles.list} contentContainerStyle={[styles.listContent, incompleteTasks.length === 0 && styles.listEmpty]}>
+          {incompleteTasks.length === 0 && <Text style={styles.empty}>{'아직 할 일이 없어.\n선택 없이 같이 시작해볼까?'}</Text>}
           {incompleteTasks.map((task) => {
             const selected = selectedId === task.id;
             return (
@@ -86,7 +96,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 475,
+    height: HERO_HEIGHT,
   },
   heroText: {
     position: 'absolute',
@@ -121,11 +131,22 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   list: {
-    flexGrow: 0,
+    flexGrow: 1,
   },
   listContent: {
     gap: 10,
     paddingBottom: 6,
+  },
+  listEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  empty: {
+    paddingVertical: 12,
+    textAlign: 'center',
+    fontFamily: fonts.body,
+    fontSize: fontSize.md,
+    color: colors.textMuted,
   },
   item: {
     minHeight: 56,
