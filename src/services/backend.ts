@@ -1,5 +1,5 @@
 import { apiRequest, ApiError } from '@/utils/api';
-import { readAccessToken, writeAccessToken } from '@/utils/token';
+import { clearAccessToken, readAccessToken, writeAccessToken } from '@/utils/token';
 
 type ApiOptions = Omit<RequestInit, 'headers'> & { headers?: HeadersInit };
 async function request<T>(path: string, options: ApiOptions = {}) {
@@ -94,17 +94,15 @@ export async function loginEmail(email: string, password: string) {
   return session;
 }
 
-export async function ensureGuestSession() {
-  const token = await readAccessToken();
-  if (token) {
-    try {
-      await getMe();
-      return;
-    } catch (error) {
-      if (!(error instanceof ApiError && error.status === 401)) throw error;
-    }
+export async function restoreSavedSession() {
+  if (!(await readAccessToken())) return null;
+  try {
+    return await getMe();
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 401)) throw error;
+    await clearAccessToken();
+    return null;
   }
-  await createGuestSession();
 }
 
 export const listTasks = async (status?: 'TODO' | 'DONE') => {

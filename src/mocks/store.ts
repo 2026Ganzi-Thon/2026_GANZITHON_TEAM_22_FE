@@ -2,12 +2,12 @@ import { useSyncExternalStore } from 'react';
 
 import {
   changeStartReminder,
+  createGuestSession,
   createSubtask,
   createTask as postTask,
   deleteStartReminder,
   deleteSubtask,
   deleteTask,
-  ensureGuestSession,
   getCurrentReminder,
   getCurrentStudySession,
   getTask,
@@ -17,11 +17,13 @@ import {
   patchTask,
   putNextStartReminder,
   registerEmail,
+  restoreSavedSession,
   type ReminderDTO,
   type SubtaskDTO,
   type TaskDTO,
 } from '@/services/backend';
 import { clearAccessToken } from '@/utils/token';
+import { readPreference, writePreference } from '@/utils/preferences';
 import { studyActions } from '@/hooks/useStudySession';
 import type { Reminder, Subtask, Task } from '@/types/task';
 import { cancelStartReminder, clearStaleStartReminders, scheduleStartReminder } from '@/services/localNotifications';
@@ -109,13 +111,27 @@ async function syncLocalReminder(reminder: ReminderDTO | null, requestPermission
   }
 }
 
+const ACCEPTED_GUEST_KEY = 'acceptedGuestUserId';
+
 let initializePromise: Promise<void> | null = null;
-export function initializeAppStore() {
+export function initializeAppStore(mode: 'restore' | 'guest' = 'restore') {
   if (initializePromise) return initializePromise;
   initializePromise = (async () => {
     setState({ loading: true, error: null });
     try {
-      await ensureGuestSession();
+      const savedSession = await restoreSavedSession();
+      if (mode === 'guest') {
+        const guest = savedSession ?? await createGuestSession();
+        if (!savedSession || savedSession.accountType === 'GUEST') {
+          await writePreference(ACCEPTED_GUEST_KEY, guest.userId);
+        }
+      } else if (!savedSession || (
+        savedSession.accountType === 'GUEST'
+        && await readPreference<string | null>(ACCEPTED_GUEST_KEY, null) !== savedSession.userId
+      )) {
+        setState({ loggedIn: false, loading: false });
+        return;
+      }
       const [taskResult, reminderResult, studyResult] = await Promise.all([
         listTasks(),
         getCurrentReminder(),
@@ -241,8 +257,8 @@ export const reminderActions = {
 };
 
 export const authActions = {
-  async login() {
-    await initializeAppStore();
+  async loginAsGuest() {
+    await initializeAppStore('guest');
   },
   async loginWithEmail(email: string, password: string) {
     await loginEmail(email.trim(), password);

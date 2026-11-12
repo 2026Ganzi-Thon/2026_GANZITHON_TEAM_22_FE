@@ -35,7 +35,7 @@ export default function LoginScreen() {
     if (loading) return;
     setLoading(true);
     try {
-      await authActions.login();
+      await authActions.loginAsGuest();
       router.replace('/');
     } catch (error) {
       showAlert('시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
