@@ -10,6 +10,9 @@ import AuthLayout from '@/features/auth/AuthLayout';
 import { authActions } from '@/mocks/store';
 import { showAlert } from '@/utils/alert';
 
+const MIN_PASSWORD_LENGTH = 15;
+const MAX_PASSWORD_LENGTH = 128;
+
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,8 +22,15 @@ export default function SignupScreen() {
 
   const submit = async () => {
     if (loading) return;
-    if (!email.trim() || !password) {
-      showAlert('가입 정보를 입력해줘', '이메일과 비밀번호를 확인해줘.');
+    const address = email.trim().toLowerCase();
+    if (address.length > 254 || !/^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(address)
+      || address.startsWith('.') || address.includes('..') || address.includes('.@')) {
+      showAlert('이메일을 확인해줘', '이메일을 올바른 형식으로 입력해줘.');
+      return;
+    }
+    const passwordLength = Array.from(password).length;
+    if (passwordLength < MIN_PASSWORD_LENGTH || passwordLength > MAX_PASSWORD_LENGTH) {
+      showAlert('비밀번호를 확인해줘', `비밀번호는 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 입력해줘.`);
       return;
     }
     if (!termsAccepted || !privacyAccepted) {
@@ -29,7 +39,7 @@ export default function SignupScreen() {
     }
     setLoading(true);
     try {
-      await authActions.registerWithEmail(email, password);
+      await authActions.registerWithEmail(address, password);
       showAlert('가입했어', '이메일 인증은 아직 제공되지 않아. 바로 시작할 수 있어.');
       router.replace('/');
     } catch (error) {
@@ -66,6 +76,7 @@ export default function SignupScreen() {
         onSubmitEditing={submit}
         returnKeyType="go"
       />
+      <Text style={styles.note}>비밀번호는 {MIN_PASSWORD_LENGTH}~{MAX_PASSWORD_LENGTH}자로 입력해줘.</Text>
       <View style={styles.agreements}>
         <AgreeCheck label="[필수] 이용약관 동의" checked={termsAccepted} onChange={setTermsAccepted} />
         <AgreeCheck label="[필수] 개인정보 수집 및 이용 동의" checked={privacyAccepted} onChange={setPrivacyAccepted} />
