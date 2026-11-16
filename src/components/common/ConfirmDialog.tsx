@@ -7,6 +7,7 @@ type Props = {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -17,19 +18,20 @@ export default function ConfirmDialog({
   message,
   confirmLabel = '예',
   cancelLabel = '아니오',
+  busy = false,
   onConfirm,
   onCancel,
 }: Props) {
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={styles.dim} onPress={onCancel}>
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={() => { if (!busy) onCancel(); }}>
+      <Pressable style={styles.dim} onPress={busy ? undefined : onCancel}>
         <Pressable style={styles.box}>
           <Text style={styles.message}>{message}</Text>
           <View style={styles.buttons}>
-            <Pressable accessibilityRole="button" onPress={onConfirm} style={styles.button}>
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={onConfirm} style={styles.button}>
               <Text style={styles.buttonLabel}>{confirmLabel}</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.button}>
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={onCancel} style={styles.button}>
               <Text style={styles.buttonLabel}>{cancelLabel}</Text>
             </Pressable>
           </View>

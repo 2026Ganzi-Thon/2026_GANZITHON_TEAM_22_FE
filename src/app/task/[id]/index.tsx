@@ -1,8 +1,9 @@
 // HM-02-detail 할 일 자세히 보기 (+ HM-03-done: 추가 직후, created=1)
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import Button from '@/components/common/Button';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import LoadingView from '@/components/common/LoadingView';
 import SectionTitle from '@/components/common/SectionTitle';
@@ -22,6 +23,8 @@ export default function TaskDetailScreen() {
   const { tasks } = useMockStore();
   const task = tasks.find((t) => t.id === id);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const deleteInProgress = useRef(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,12 +55,18 @@ export default function TaskDetailScreen() {
     }
   };
   const remove = async () => {
+    if (deleteInProgress.current) return;
+    deleteInProgress.current = true;
+    setDeleting(true);
     try {
       await taskActions.remove(task.id);
       setConfirmDelete(false);
       goBack();
     } catch (error) {
       showAlert('삭제하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
+    } finally {
+      deleteInProgress.current = false;
+      setDeleting(false);
     }
   };
 
@@ -93,11 +102,19 @@ export default function TaskDetailScreen() {
         </>
       )}
 
+      {!created && (
+        <Button label="할 일 삭제" size="md" variant="outline" onPress={() => setConfirmDelete(true)} />
+      )}
+
       <ConfirmDialog
         visible={confirmDelete}
         message={'할 일을\n삭제해볼까?'}
+        confirmLabel={deleting ? '삭제 중…' : '예'}
+        busy={deleting}
         onConfirm={remove}
-        onCancel={() => setConfirmDelete(false)}
+        onCancel={() => {
+          if (!deleteInProgress.current) setConfirmDelete(false);
+        }}
       />
     </Screen>
   );
