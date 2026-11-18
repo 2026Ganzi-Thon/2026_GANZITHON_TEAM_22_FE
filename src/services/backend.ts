@@ -163,11 +163,23 @@ export const changeStudySession = (sessionId: string, action: 'PAUSE' | 'RESUME'
 
 export const getCurrentReminder = () => request<ReminderCurrentDTO>('start-reminders/current');
 
-export const putNextStartReminder = (sessionId: string, remindAt: string, timeZone: string) =>
-  request<ReminderCurrentDTO>(`study-sessions/${encodeURIComponent(sessionId)}/next-start-reminder`, {
-    method: 'PUT',
-    body: JSON.stringify({ remindAt, timeZone }),
-  });
+export async function putNextStartReminder(sessionId: string, remindAt: string, timeZone: string) {
+  const body = JSON.stringify({ remindAt, timeZone });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request<ReminderCurrentDTO>(`study-sessions/${encodeURIComponent(sessionId)}/next-start-reminder`, {
+        method: 'PUT', body,
+      });
+    } catch (error) {
+      const transient = error instanceof ApiError && (
+        error.status === 0 || (error.body && typeof error.body === 'object'
+          && 'retryable' in error.body && error.body.retryable === true)
+      );
+      if (!transient || attempt >= 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+}
 
 export const changeStartReminder = (
   reminder: Pick<ReminderDTO, 'id' | 'remindAt' | 'timeZone'>,
@@ -213,13 +225,15 @@ export type ChatUsageDTO = {
   availability: string;
 };
 
-export function createExchange(input: {
+export type ExchangeRequest = {
   clientRequestId: string;
   content: string;
   studySessionId?: string | null;
   previousRequestId?: string | null;
   characterKeys?: string[];
-}) {
+};
+
+export function createExchange(input: ExchangeRequest) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 35_000);
   const payload = request<ExchangeDTO>('chat/exchanges', {
@@ -227,32 +241,12 @@ export function createExchange(input: {
     body: JSON.stringify(input),
     signal: controller.signal,
   });
-  return payload
-    .catch(async (error: unknown) => {
-      // A timeout or transient server error may happen after the exchange was saved.
-      // Recover with the same id so a retry never starts a second model request.
-      const status = error instanceof ApiError ? error.status : 0;
-      const code = error instanceof ApiError && typeof error.body === 'object' && error.body && 'code' in error.body
-        ? String(error.body.code)
-        : '';
-      const shouldRecover = code !== 'CHAT_NOT_CONFIGURED'
-        && (status === 0 || status >= 500 || (status === 409 && code === 'REQUEST_IN_PROGRESS'));
-      if (shouldRecover) {
-        try {
-          const recovered = await recoverExchange(input.clientRequestId);
-          if (recovered) return recovered;
-        } catch {
-          // Keep the original create error; recovery is best effort.
-        }
-      }
-      throw error;
-    })
-    .finally(() => clearTimeout(timeout));
+  return payload.finally(() => clearTimeout(timeout));
 }
 
-export async function recoverExchange(clientRequestId: string) {
+export async function recoverExchange(clientRequestId: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ clientRequestId });
-  const result = await request<{ items: ExchangeDTO[] }>(`chat/exchanges?${query.toString()}`);
+  const result = await request<{ items: ExchangeDTO[] }>(`chat/exchanges?${query.toString()}`, { signal });
   return result.items.find((item) => item.clientRequestId === clientRequestId) ?? null;
 }
 
@@ -263,3 +257,30 @@ export async function getChatHistory(limit = 50, cursor?: string | null) {
 }
 
 export const getChatUsage = () => request<ChatUsageDTO>('chat/usage');
+
+export type PresenceEvent = {
+  installationId: string;
+  eventId: string;
+  sequence: number;
+  state: 'FOREGROUND' | 'BACKGROUND';
+};
+export type PresenceResult = {
+  sessionId: string;
+  installationId: string;
+  state: 'FOREGROUND' | 'BACKGROUND';
+  awayAt: string | null;
+  dueAt: string | null;
+  deliveryStatus: string;
+  deliveryEnabled: boolean;
+  serverTime: string;
+};
+export const registerPushDevice = (installationId: string, expoPushToken: string) =>
+  request<{ installationId: string }>(`push-devices/${installationId}`, {
+    method: 'PUT', body: JSON.stringify({ expoPushToken }),
+  });
+export const removePushDevice = (installationId: string) =>
+  request<void>(`push-devices/${installationId}`, { method: 'DELETE' });
+export const sendStudyPresence = (sessionId: string, event: PresenceEvent) =>
+  request<PresenceResult>(`study-sessions/${sessionId}/presence`, {
+    method: 'PUT', body: JSON.stringify(event),
+  });

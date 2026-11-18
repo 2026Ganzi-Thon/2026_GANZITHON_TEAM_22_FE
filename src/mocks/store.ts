@@ -22,13 +22,14 @@ import {
   type SubtaskDTO,
   type TaskDTO,
 } from '@/services/backend';
-import { clearAccessToken } from '@/utils/token';
+import { clearAccessToken, readAccessToken } from '@/utils/token';
 import { readPreference, writePreference } from '@/utils/preferences';
 import { studyActions } from '@/hooks/useStudySession';
 import type { Reminder, Subtask, Task } from '@/types/task';
 import { cancelStartReminder, clearStaleStartReminders, scheduleStartReminder } from '@/services/localNotifications';
+import { unregisterCurrentPushDevice } from '@/services/studyPresence';
 
-type State = { tasks: Task[]; reminder: Reminder | null; loggedIn: boolean; loading: boolean; error: string | null };
+type State = { tasks: Task[]; reminder: Reminder | null; userId?: string; loggedIn: boolean; loading: boolean; error: string | null };
 let state: State = { tasks: [], reminder: null, loggedIn: false, loading: true, error: null };
 const listeners = new Set<() => void>();
 
@@ -56,7 +57,7 @@ const toTask = (dto: TaskDTO): Task => ({
   subtasks: (dto.subtasks ?? []).map((subtask) => ({ id: subtask.id, title: subtask.title, status: subtask.status })),
 });
 const toSubtask = (dto: SubtaskDTO): Subtask => ({ id: dto.id, title: dto.title, status: dto.status });
-const toReminder = (dto: ReminderDTO | null): Reminder | null => dto ? ({
+const toReminder = (dto: ReminderDTO | null): Reminder | null => dto?.status === 'ACTIVE' ? ({
   id: dto.id,
   sessionId: dto.sourceSessionId,
   remindAt: dto.remindAt,
@@ -120,8 +121,10 @@ export function initializeAppStore(mode: 'restore' | 'guest' = 'restore') {
     setState({ loading: true, error: null });
     try {
       const savedSession = await restoreSavedSession();
+      let userId = savedSession?.userId;
       if (mode === 'guest') {
         const guest = savedSession ?? await createGuestSession();
+        userId = guest.userId;
         if (!savedSession || savedSession.accountType === 'GUEST') {
           await writePreference(ACCEPTED_GUEST_KEY, guest.userId);
         }
@@ -141,6 +144,7 @@ export function initializeAppStore(mode: 'restore' | 'guest' = 'restore') {
       setState({
         tasks: taskResult.items.map(toTask),
         reminder: toReminder(reminderResult.reminder),
+        userId,
         loggedIn: true,
         loading: false,
         error: null,
@@ -232,9 +236,10 @@ export const taskActions = {
 export const reminderActions = {
   async setFromSession(sessionId: string, remindAt: string, timeZone: string) {
     const dto = await putNextStartReminder(sessionId, remindAt, timeZone);
-    setState({ reminder: toReminder(dto.reminder) });
+    const reminder = toReminder(dto.reminder);
+    setState({ reminder });
     const scheduled = await syncLocalReminder(dto.reminder, true);
-    return { reminder: dto.reminder, scheduled };
+    return { reminder, scheduled };
   },
   async update(remindAt: string, timeZone: string) {
     const current = state.reminder;
@@ -242,7 +247,7 @@ export const reminderActions = {
     const dto = await changeStartReminder(current, remindAt, timeZone);
     setState({ reminder: toReminder(dto.reminder) });
     await syncLocalReminder(dto.reminder, true);
-    return dto.reminder;
+    return toReminder(dto.reminder);
   },
   async cancel() {
     const current = state.reminder;
@@ -261,6 +266,7 @@ export const authActions = {
     await initializeAppStore('guest');
   },
   async loginWithEmail(email: string, password: string) {
+    if (await readAccessToken()) await unregisterCurrentPushDevice();
     await loginEmail(email.trim(), password);
     await initializeAppStore();
   },
@@ -269,7 +275,8 @@ export const authActions = {
     await initializeAppStore();
   },
   async logout() {
+    await unregisterCurrentPushDevice();
     await clearAccessToken();
-    setState({ loggedIn: false, tasks: [], reminder: null });
+    setState({ loggedIn: false, userId: undefined, tasks: [], reminder: null });
   },
 };

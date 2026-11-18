@@ -16,6 +16,7 @@ export default function ChatInput({ onSend, disabled = false }: { onSend: (text:
     <View style={styles.box}>
       <TextInput
         value={text}
+        maxLength={1000}
         onChangeText={setText}
         onSubmitEditing={send}
         editable={!disabled}

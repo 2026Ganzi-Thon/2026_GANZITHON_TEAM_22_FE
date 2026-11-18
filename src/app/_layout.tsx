@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AnimatedSplash from '@/components/layout/AnimatedSplash';
 import { colors, WEB_APP_MAX_WIDTH } from '@/constants/theme';
 import { studyActions } from '@/hooks/useStudySession';
+import { useStudyPresence } from '@/hooks/useStudyPresence';
 import { refreshTasks, reminderActions, useMockStore } from '@/mocks/store';
 
 SplashScreen.preventAutoHideAsync();
@@ -16,6 +17,7 @@ SplashScreen.preventAutoHideAsync();
 const SPLASH_MIN_MS = 1500;
 
 export default function RootLayout() {
+  useStudyPresence();
   const { loggedIn, loading } = useMockStore();
   const [fontsLoaded] = useFonts({
     'Dunggeunmiso-B': require('@/assets/fonts/Dunggeunmiso-B.otf'),

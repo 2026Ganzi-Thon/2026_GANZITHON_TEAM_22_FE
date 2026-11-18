@@ -20,6 +20,7 @@ import {
 import { useMockStore } from '@/mocks/store';
 import { writePreference } from '@/utils/preferences';
 import { showAlert } from '@/utils/alert';
+import { syncPushRegistration, unregisterCurrentPushDevice } from '@/services/studyPresence';
 
 const NOTIFICATIONS_ENABLED_KEY = 'notificationsEnabled';
 
@@ -75,9 +76,11 @@ export default function MyScreen() {
           return;
         }
         await writePreference(NOTIFICATIONS_ENABLED_KEY, true);
+        await syncPushRegistration();
         if (reminder?.status === 'ACTIVE') await scheduleStartReminder(reminder.id, reminder.remindAt, false);
       } else {
         await writePreference(NOTIFICATIONS_ENABLED_KEY, false);
+        await unregisterCurrentPushDevice();
         await cancelAllStartReminders();
       }
       setNotify(enabled);

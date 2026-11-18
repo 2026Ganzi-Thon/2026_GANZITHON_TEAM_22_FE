@@ -1,10 +1,11 @@
 // ST-02 스터디룸 (+ ST-03-exit 나가기 선택, ST-04 다음 시작 알림)
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DateTimeSheet from '@/components/common/DateTimeSheet';
+import Button from '@/components/common/Button';
 import { colors, fonts, fontSize } from '@/constants/theme';
 import CharacterTile from '@/features/study/CharacterTile';
 import ExitSheet from '@/features/study/ExitSheet';
@@ -15,22 +16,41 @@ import TimerPill from '@/features/study/TimerPill';
 import { studyActions, useStudySession } from '@/hooks/useStudySession';
 import { reminderActions, useMockStore } from '@/mocks/store';
 import { showAlert } from '@/utils/alert';
+import { formatReminder } from '@/utils/date';
+import { readReminderDraft, saveReminderDraft, type ReminderDraft } from '@/services/reminderDraft';
 
 type Sheet = 'none' | 'exit' | 'alarm' | 'custom';
 
 export default function StudyRoomScreen() {
   const insets = useSafeAreaInsets();
   const session = useStudySession();
-  const task = useMockStore().tasks.find((t) => t.id === session.taskId);
+  const { tasks, userId } = useMockStore();
+  const task = tasks.find((t) => t.id === session.taskId);
   const [sheet, setSheet] = useState<Sheet>('none');
   const leaving = useRef(false);
   const endedSessionId = useRef<string | undefined>(undefined);
   const resting = session.status === 'rest';
+  const [draft, setDraft] = useState<ReminderDraft | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!userId) return;
+    readReminderDraft(userId).then((saved) => {
+      if (!active) return;
+      setDraft(saved);
+      setDraftLoaded(true);
+    }).catch((error) => {
+      if (active) showAlert('예약 정보를 불러오지 못했어', String(error));
+    });
+    return () => { active = false; };
+  }, [userId]);
 
   // 나가면 타이머 종료. 할 일은 자동 완료되지 않는다 (명세)
   const leave = async (remindAt: string | null) => {
-    if (leaving.current) return;
-    if (remindAt) {
+    if (leaving.current || !draftLoaded || !userId) return;
+    if (remindAt && !draft) {
       const when = new Date(remindAt).getTime();
       const latest = Date.now() + 7 * 24 * 60 * 60 * 1000;
       if (!Number.isFinite(when) || when <= Date.now() || when > latest) {
@@ -39,21 +59,35 @@ export default function StudyRoomScreen() {
       }
     }
     leaving.current = true;
+    setSaving(true);
     try {
-      if (!endedSessionId.current) endedSessionId.current = (await studyActions.end())?.id;
-      if (remindAt) {
-        if (!endedSessionId.current) {
+      let request = draft;
+      if (!request && remindAt) {
+        const sessionId = endedSessionId.current ?? session.sessionId;
+        if (!sessionId) {
           showAlert('알림을 저장할 수 없어', '공부 세션을 먼저 시작해줘.');
           return;
         }
+        request = { sessionId, remindAt, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul' };
+        await saveReminderDraft(userId, request);
+        setDraft(request);
+      }
+      if (!endedSessionId.current && session.sessionId && (!request || request.sessionId === session.sessionId)) {
+        const ended = await studyActions.end();
+        endedSessionId.current = ended?.id;
+      }
+      if (request) {
         const result = await reminderActions.setFromSession(
-          endedSessionId.current,
-          remindAt,
-          Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul',
+          request.sessionId, request.remindAt, request.timeZone,
         );
-        if (result.reminder && !result.scheduled && Platform.OS !== 'web') {
+        if (!remindAt && result.reminder) await reminderActions.cancel();
+        else if (result.reminder && !result.scheduled && Platform.OS !== 'web') {
           showAlert('알림을 저장했어', '기기 알림 권한을 허용하면 잠금 화면에서 받을 수 있어.');
+        } else if (remindAt && !result.reminder) {
+          showAlert('예약 상태를 확인했어', '이미 취소되었거나 만료된 예약이야.');
         }
+        await saveReminderDraft(userId, null);
+        setDraft(null);
       }
       setSheet('none');
       router.dismissTo('/');
@@ -65,11 +99,19 @@ export default function StudyRoomScreen() {
       }
     } finally {
       leaving.current = false;
+      setSaving(false);
     }
   };
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 16 }]}>
+      {draft && (
+        <View style={styles.retry}>
+          <Text style={styles.subtitle}>{formatReminder(draft.remindAt)} 예약을 다시 확인해줘.</Text>
+          <Button label={saving ? '확인 중…' : '같은 예약 다시 시도'} size="md" disabled={saving} onPress={() => leave(draft.remindAt)} />
+          <Button label="알림 없이 나가기" size="md" variant="outline" disabled={saving} onPress={() => leave(null)} />
+        </View>
+      )}
       <View style={styles.header}>
         <View style={styles.headerTexts}>
           <Text style={styles.title} numberOfLines={1}>
@@ -128,6 +170,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  retry: { paddingHorizontal: 24, gap: 8, marginBottom: 12 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
