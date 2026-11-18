@@ -15,7 +15,7 @@ export const TABS = [
   },
   {
     name: 'chat',
-    label: '감정콩',
+    label: '대화',
     // 스터디룸 하단 "대화" 아이콘과 같은 이미지 사용
     icon: require('@/assets/images/icons/study/chat.png'),
     crop: { width: '100%', height: '130.64%', left: '0%', top: '0%' },
