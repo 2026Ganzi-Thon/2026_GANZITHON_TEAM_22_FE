@@ -9,7 +9,7 @@ import Button from '@/components/common/Button';
 import ErrorView from '@/components/common/ErrorView';
 import LoadingView from '@/components/common/LoadingView';
 import Toggle from '@/components/common/Toggle';
-import { colors, fonts, fontSize } from '@/constants/theme';
+import { colors, fonts, fontSize, spacing } from '@/constants/theme';
 import { getMe, type MeDTO } from '@/services/backend';
 import {
   cancelAllStartReminders,
@@ -172,12 +172,17 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     gap: 4,
+    paddingHorizontal: spacing.xl,
   },
   name: {
+    flexShrink: 1,
     fontFamily: fonts.titleBold,
     fontSize: 18,
     color: colors.text,
+    textAlign: 'center',
   },
   chevron: {
     fontFamily: fonts.body,
