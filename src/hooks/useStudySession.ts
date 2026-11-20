@@ -40,6 +40,17 @@ const fromDto = (dto: StudyDTO): Session => ({
   resumedAt: dto.status === 'STUDYING' ? Date.now() : undefined,
 });
 
+// 일시정지·다시 시작·종료는 한 줄로 처리한다. 대화에서 돌아오며 보낸 RESUME과
+// 바로 누른 END가 같은 version으로 겹치면 뒤의 요청이 409가 되기 때문
+let changeQueue: Promise<unknown> = Promise.resolve();
+function serial<T>(task: () => Promise<T>): Promise<T> {
+  const run = changeQueue.then(task, task);
+  changeQueue = run.catch(() => undefined);
+  return run;
+}
+
+const idle = (): Session => ({ status: 'idle', accumulated: 0, version: 0 });
+
 export const studyActions = {
   reset() {
     accountRevision++;
@@ -65,41 +76,60 @@ export const studyActions = {
     return dto;
   },
   /** Pause while chatting or when the user taps the timer. */
-  async pause() {
-    if (session.status !== 'study' || !session.sessionId) return;
-    try {
-      const dto = await changeStudySession(session.sessionId, 'PAUSE', session.version);
-      set(fromDto(dto));
-      return dto;
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) await this.sync();
-      throw error;
-    }
+  pause() {
+    return serial(async () => {
+      if (session.status !== 'study' || !session.sessionId) return;
+      try {
+        const dto = await changeStudySession(session.sessionId, 'PAUSE', session.version);
+        set(fromDto(dto));
+        return dto;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) await this.sync();
+        throw error;
+      }
+    });
   },
-  async resume(expectedSessionId?: string) {
-    if (session.status !== 'rest' || !session.sessionId
-      || (expectedSessionId && session.sessionId !== expectedSessionId)) return;
-    try {
-      const dto = await changeStudySession(session.sessionId, 'RESUME', session.version);
-      set(fromDto(dto));
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) await this.sync();
-      throw error;
-    }
+  resume(expectedSessionId?: string) {
+    return serial(async () => {
+      if (session.status !== 'rest' || !session.sessionId
+        || (expectedSessionId && session.sessionId !== expectedSessionId)) return;
+      try {
+        const dto = await changeStudySession(session.sessionId, 'RESUME', session.version);
+        set(fromDto(dto));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) await this.sync();
+        throw error;
+      }
+    });
   },
-  async end() {
-    if (!session.sessionId) {
-      set({ status: 'idle', accumulated: 0, version: 0 });
-      return null;
-    }
-    try {
-      const dto = await changeStudySession(session.sessionId, 'END', session.version);
-      set({ status: 'idle', accumulated: 0, version: dto.version });
-      return dto;
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) await this.sync();
-      throw error;
-    }
+  /** 종료한 세션 id를 돌려준다. 409여도 서버에서 이미 끝난 방이면 종료로 본다 (예약은 이어서 저장) */
+  end(): Promise<{ id: string } | null> {
+    return serial(async () => {
+      const sessionId = session.sessionId;
+      if (!sessionId) {
+        set(idle());
+        return null;
+      }
+      const endWith = async (version: number) => {
+        const dto = await changeStudySession(sessionId, 'END', version);
+        set({ ...idle(), version: dto.version });
+        return { id: dto.id };
+      };
+      try {
+        return await endWith(session.version);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 409)) throw error;
+        const current = (await getCurrentStudySession()).studySession;
+        if (!current || current.status === 'ENDED' || current.id !== sessionId) {
+          // 이 방은 이미 끝났다. 다른 방이 열려 있으면 그 상태를 보여준다
+          this.restore(current);
+          return { id: sessionId };
+        }
+        // 아직 열려 있는 같은 방: 최신 version으로 한 번만 다시 종료
+        set(fromDto(current));
+        return endWith(current.version);
+      }
+    });
   },
 };
 

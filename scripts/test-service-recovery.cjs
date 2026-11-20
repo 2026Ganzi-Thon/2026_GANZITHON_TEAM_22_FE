@@ -580,3 +580,60 @@ test('leaving without an alarm after END succeeds navigates home without retryin
   assert.equal(exits, 1); assert.equal(reservations, 1); assert.equal(ends, 1);
   assert.equal(cancels, 1); assert.equal(draft, null); assert.equal(session.status, 'idle');
 });
+
+function loadStudySession(backend) {
+  return load('src/hooks/useStudySession.ts', {
+    react: { useSyncExternalStore: (_, snapshot) => snapshot(), useState: (initial) => [initial()], useEffect() {} },
+    '@/services/backend': backend,
+    '@/services/studyStart': {}, '@/utils/api': { ApiError },
+  });
+}
+
+test('END sent right after a chat RESUME waits for it and uses the new version', async () => {
+  const calls = [];
+  let release;
+  const service = loadStudySession({
+    changeStudySession: async (id, action, version) => {
+      calls.push(`${action}@${version}`);
+      if (action === 'RESUME') await new Promise((resolve) => { release = resolve; });
+      if (version !== calls.length - 1) throw new ApiError(409, 'VERSION_CONFLICT', 'stale');
+      return { id, taskId: null, status: action === 'END' ? 'ENDED' : 'STUDYING', studySeconds: 60, version: version + 1 };
+    },
+    getCurrentStudySession: async () => assert.fail('no sync expected'),
+  });
+  service.studyActions.restore({ id: 'room', taskId: null, status: 'PAUSED', studySeconds: 60, version: 0 });
+  const resumed = service.studyActions.resume('room');
+  const ended = service.studyActions.end();
+  await flush();
+  assert.equal(calls.join(), 'RESUME@0');
+  release();
+  await resumed;
+  assert.equal((await ended).id, 'room');
+  assert.equal(calls.join(), 'RESUME@0,END@1');
+  assert.equal(service.useStudySession().status, 'idle');
+});
+
+test('END 409 on a room the server already ended counts as ended so the reservation can continue', async () => {
+  const service = loadStudySession({
+    changeStudySession: async () => { throw new ApiError(409, 'VERSION_CONFLICT', 'stale'); },
+    getCurrentStudySession: async () => ({ studySession: null }),
+  });
+  service.studyActions.restore({ id: 'room', taskId: null, status: 'STUDYING', studySeconds: 60, version: 3 });
+  assert.equal((await service.studyActions.end()).id, 'room');
+  assert.equal(service.useStudySession().status, 'idle');
+});
+
+test('END 409 on a room that is still open retries once with the latest version', async () => {
+  const versions = [];
+  const service = loadStudySession({
+    changeStudySession: async (id, _action, version) => {
+      versions.push(version);
+      if (version !== 5) throw new ApiError(409, 'VERSION_CONFLICT', 'stale');
+      return { id, taskId: null, status: 'ENDED', studySeconds: 90, version: 6 };
+    },
+    getCurrentStudySession: async () => ({ studySession: { id: 'room', taskId: null, status: 'STUDYING', studySeconds: 90, version: 5 } }),
+  });
+  service.studyActions.restore({ id: 'room', taskId: null, status: 'STUDYING', studySeconds: 60, version: 4 });
+  assert.equal((await service.studyActions.end()).id, 'room');
+  assert.equal(versions.join(), '4,5');
+});
