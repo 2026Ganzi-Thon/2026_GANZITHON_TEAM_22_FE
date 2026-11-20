@@ -26,7 +26,7 @@ export default function TodoSection({ tasks, onToggleTask, onPressTask, onPressA
       </View>
 
       {/* 할 일이 많으면 카드 안에서 스크롤 */}
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.list, tasks.length === 0 && styles.listEmpty]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} nestedScrollEnabled contentContainerStyle={[styles.list, tasks.length === 0 && styles.listEmpty]} showsVerticalScrollIndicator={false}>
         {tasks.length === 0 ? (
           <Text style={styles.empty}>할 일이 없어도 같이 시작할 수 있어!</Text>
         ) : (
