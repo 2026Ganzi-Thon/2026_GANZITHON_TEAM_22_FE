@@ -12,6 +12,7 @@ import {
   getCurrentStudySession,
   getTask,
   loginEmail,
+  logoutSession,
   listTasks,
   patchSubtask,
   patchTask,
@@ -23,11 +24,13 @@ import {
   type TaskDTO,
 } from '@/services/backend';
 import { clearAccessToken, readAccessToken } from '@/utils/token';
+import { ApiError } from '@/utils/api';
 import { readPreference, writePreference } from '@/utils/preferences';
 import { studyActions } from '@/hooks/useStudySession';
 import type { Reminder, Subtask, Task } from '@/types/task';
-import { cancelStartReminder, clearStaleStartReminders, scheduleStartReminder } from '@/services/localNotifications';
+import { cancelAllStartReminders, cancelStartReminder, clearStaleStartReminders, scheduleStartReminder } from '@/services/localNotifications';
 import { unregisterCurrentPushDevice } from '@/services/studyPresence';
+import { cancelPendingStudyStart } from '@/services/studyStart';
 
 type State = { tasks: Task[]; reminder: Reminder | null; userId?: string; loggedIn: boolean; loading: boolean; error: string | null };
 let state: State = { tasks: [], reminder: null, loggedIn: false, loading: true, error: null };
@@ -259,6 +262,15 @@ export const reminderActions = {
   async refresh() {
     return refreshReminder();
   },
+  async cancelForSession(sessionId: string) {
+    const owner = state.userId;
+    const { reminder } = await getCurrentReminder();
+    if (state.userId !== owner || reminder?.sourceSessionId !== sessionId || reminder.status !== 'ACTIVE') return;
+    await deleteStartReminder(reminder.id);
+    if (state.userId !== owner) return;
+    if (state.reminder?.id === reminder.id) setState({ reminder: null });
+    await cancelStartReminder(reminder.id);
+  },
 };
 
 export const authActions = {
@@ -275,8 +287,22 @@ export const authActions = {
     await initializeAppStore();
   },
   async logout() {
-    await unregisterCurrentPushDevice();
+    if (state.userId) cancelPendingStudyStart(state.userId);
+    if (await readAccessToken()) {
+      try {
+        await unregisterCurrentPushDevice();
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) throw error;
+      }
+      try { await logoutSession(); }
+      catch (error) {
+        // Expired/revoked sessions still need local cleanup. Other failures remain retryable.
+        if (!(error instanceof ApiError && error.status === 401)) throw error;
+      }
+    }
+    await cancelAllStartReminders();
     await clearAccessToken();
+    studyActions.reset();
     setState({ loggedIn: false, userId: undefined, tasks: [], reminder: null });
   },
 };

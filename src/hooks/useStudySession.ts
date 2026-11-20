@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
-import { changeStudySession, getCurrentStudySession, startStudySession, type StudyDTO } from '@/services/backend';
+import { changeStudySession, getCurrentStudySession, type StudyDTO } from '@/services/backend';
+import { startOrRecoverStudy } from '@/services/studyStart';
 import { ApiError } from '@/utils/api';
 
 type Status = 'idle' | 'study' | 'rest';
@@ -16,6 +17,7 @@ type Session = {
 };
 
 let session: Session = { status: 'idle', accumulated: 0, version: 0 };
+let accountRevision = 0;
 const listeners = new Set<() => void>();
 const set = (next: Session) => {
   session = next;
@@ -34,11 +36,15 @@ const fromDto = (dto: StudyDTO): Session => ({
   taskId: dto.taskId ?? undefined,
   sessionId: dto.status === 'ENDED' ? undefined : dto.id,
   version: dto.version,
-  accumulated: dto.studySeconds * 1000,
+  accumulated: ((dto.priorTaskStudySeconds ?? 0) + dto.studySeconds) * 1000,
   resumedAt: dto.status === 'STUDYING' ? Date.now() : undefined,
 });
 
 export const studyActions = {
+  reset() {
+    accountRevision++;
+    set({ status: 'idle', accumulated: 0, version: 0 });
+  },
   restore(dto: StudyDTO | null) {
     if (!dto || dto.status === 'ENDED') {
       set({ status: 'idle', accumulated: 0, version: 0 });
@@ -51,8 +57,10 @@ export const studyActions = {
     const current = await getCurrentStudySession();
     if (session === before) this.restore(current.studySession);
   },
-  async start(taskId?: string) {
-    const dto = await startStudySession(taskId);
+  async start(taskId: string | undefined, userId: string) {
+    const revision = accountRevision;
+    const dto = await startOrRecoverStudy(userId, taskId);
+    if (revision !== accountRevision) throw new Error('계정이 변경됐어. 다시 로그인해줘.');
     set(fromDto(dto));
     return dto;
   },

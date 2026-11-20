@@ -8,9 +8,14 @@ export function apiErrorCode(error: unknown) {
 
 export function needsChatRecovery(error: unknown) {
   const code = apiErrorCode(error);
-  if (code === 'CHAT_NOT_CONFIGURED') return false;
+  if (code === 'CHAT_NOT_CONFIGURED' || code === 'CHAT_SAFETY_SUPPORT') return false;
+  if (needsChatResultRecheck(code)) return true;
   return !(error instanceof ApiError) || error.status === 0 || error.status >= 500
     || code === 'REQUEST_IN_PROGRESS';
+}
+
+export function needsChatResultRecheck(code: string | null | undefined) {
+  return code === 'CHAT_MEMORY_WRITE_FAILED' || code === 'AI_USAGE_RECORD_FAILED';
 }
 
 /** GET only. An unknown result must never trigger a new model request. */

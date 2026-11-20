@@ -54,6 +54,32 @@ function recovery(recoverExchange, clock) {
   }, clock.globals);
 }
 
+function hookHarness() {
+  const state = [], refs = [];
+  let stateIndex = 0, refIndex = 0;
+  const effects = [];
+  return {
+    effects,
+    render: (component, props) => { stateIndex = 0; refIndex = 0; return component(props); },
+    react: {
+      useState: (initial) => {
+        const index = stateIndex++;
+        if (!(index in state)) state[index] = typeof initial === 'function' ? initial() : initial;
+        return [state[index], (value) => { state[index] = typeof value === 'function' ? value(state[index]) : value; }];
+      },
+      useRef: (initial) => refs[refIndex++] ?? (refs[refIndex - 1] = { current: initial }),
+      useCallback: (callback) => callback,
+      useEffect: (callback) => effects.push(callback),
+      useSyncExternalStore: (_, snapshot) => snapshot(),
+    },
+  };
+}
+const jsx = (type, props) => ({ type, props });
+function nodes(tree) {
+  if (!tree || typeof tree !== 'object') return [];
+  return [tree, ...[tree.props?.children].flat(Infinity).flatMap(nodes)];
+}
+
 test('unknown chat results use one ID every four seconds for at most 35 seconds', async () => {
   const clock = new Clock();
   const calls = [];
@@ -134,7 +160,7 @@ test('canceled reminders never enter the active store or local notification sche
   const { useMockStore, reminderActions } = load('src/mocks/store.ts', {
     react: { useSyncExternalStore: (_, snapshot) => snapshot() },
     '@/services/backend': { putNextStartReminder: async () => ({ reminder: { id: 'canceled', status: 'CANCELED' } }) },
-    '@/utils/token': {}, '@/utils/preferences': {}, '@/hooks/useStudySession': {}, '@/services/studyPresence': {},
+    '@/utils/token': {}, '@/utils/preferences': {}, '@/utils/api': { ApiError }, '@/hooks/useStudySession': {}, '@/services/studyPresence': {}, '@/services/studyStart': {},
     '@/services/localNotifications': {
       clearStaleStartReminders: async () => {},
       scheduleStartReminder: async () => { schedules++; },
@@ -248,6 +274,7 @@ test('chat recheck button restores the saved body and performs GET recovery only
       pollExchange: async (id) => { assert.equal(id, saved.clientRequestId); polls++; return null; },
     },
     '@/utils/preferences': { readPreference: async (key) => storage.get(key), writePreference: async (key, value) => storage.set(key, value) },
+    '@/utils/api': { ApiError },
     '@/utils/alert': {},
   };
   const component = load('src/features/chat/ChatRoom.tsx', mocks, clock.globals);
@@ -258,7 +285,7 @@ test('chat recheck button restores the saved body and performs GET recovery only
   stateIndex = 0;
   const tree = conversation({ userId: 'user' });
   const children = tree.props.children;
-  const button = children.find((child) => child?.props?.label === '다시 확인');
+  const button = children.find((child) => child?.props?.label === '결과 다시 확인');
   assert.ok(button);
   await button.props.onPress();
   assert.equal(polls, 2);
@@ -346,4 +373,210 @@ test('restored reminder retries keep the old session without ending a new study 
   assert.equal(exits, 1);
   assert.equal(alerts[0][0], '예약 상태를 확인했어');
   assert.ok(!alerts.some(([title]) => title === '알림을 저장했어'));
+});
+
+async function chatHarness(createExchange, recover) {
+  const hooks = hookHarness(), storage = new Map(), requests = [], queries = [];
+  const helpers = recovery(async () => null, new Clock());
+  const component = load('src/features/chat/ChatRoom.tsx', {
+    react: hooks.react, 'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': { FlatList: 'list', Text: 'text', StyleSheet: { create: (value) => value }, Platform: { OS: 'web' } },
+    '@/components/common/Button': { __esModule: true, default: 'button' },
+    '@/features/chat/ChatInput': { __esModule: true, default: 'input' }, '@/features/chat/MessageItem': {},
+    '@/constants/characters': { CHARACTER_IDS: ['joy'] }, '@/constants/theme': { colors: {}, fonts: {} },
+    '@/mocks/store': { useMockStore: () => ({ userId: 'user' }) }, '@/utils/api': { ApiError },
+    '@/services/backend': {
+      getChatHistory: async () => ({ items: [] }),
+      getChatUsage: async () => ({ dailyRequestLimit: 30, availability: 'AVAILABLE' }),
+      newClientRequestId: () => 'original-id',
+      createExchange: async (request) => { requests.push(request); return createExchange(request); },
+    },
+    '@/services/chatRecovery': { ...helpers, pollExchange: async (id) => { queries.push(id); return recover?.(id) ?? null; } },
+    '@/utils/preferences': { readPreference: async (key, fallback) => storage.get(key) ?? fallback, writePreference: async (key, value) => storage.set(key, value) },
+    '@/utils/alert': { showAlert() {} },
+  });
+  const conversation = component.default({}).type;
+  const render = () => nodes(hooks.render(conversation, { userId: 'user' }));
+  render(); const cleanup = hooks.effects[0](); await flush();
+  return { render, storage, requests, queries, cleanup,
+    send: async () => { await render().find((node) => node.type === 'input').props.onSend('보낸 문장'); } };
+}
+
+test('CHAT_NOT_CONFIGURED overrides AVAILABLE usage and ends waiting while retaining the sent text', async () => {
+  const chat = await chatHarness(async () => { throw new ApiError(503, { code: 'CHAT_NOT_CONFIGURED' }); });
+  await chat.send();
+  const tree = chat.render();
+  assert.equal(chat.queries.length, 0);
+  assert.equal(chat.storage.get('pendingChat.user.home'), null);
+  assert.equal(tree.find((node) => node.type === 'input').props.disabled, false);
+  const messages = tree.find((node) => node.type === 'list').props.data;
+  assert.ok(messages.some((message) => message.text === '보낸 문장'));
+  assert.ok(messages.every((message) => !message.pending));
+  assert.ok(tree.some((node) => node.props?.children === '지금은 캐릭터 대화를 이용할 수 없어. 스터디룸에서 공부는 계속할 수 있어.'));
+  chat.cleanup();
+});
+
+test('CHAT_SAFETY_SUPPORT displays the server message and allows the next input without polling', async () => {
+  const message = '서버에서 제공한 지원 안내입니다.';
+  const chat = await chatHarness(async () => { throw new ApiError(422, { code: 'CHAT_SAFETY_SUPPORT', message }); });
+  await chat.send();
+  const tree = chat.render();
+  assert.ok(tree.some((node) => node.props?.children === message));
+  assert.equal(tree.find((node) => node.type === 'input').props.disabled, false);
+  assert.equal(chat.queries.length, 0);
+  assert.equal(chat.storage.get('pendingChat.user.home'), null);
+  chat.cleanup();
+});
+
+for (const code of ['CHAT_MEMORY_WRITE_FAILED', 'AI_USAGE_RECORD_FAILED']) {
+  for (const httpError of [false, true]) {
+    test(`${code} (${httpError ? 'HTTP error' : '200 FAILED'}) retains the original request for GET-only recheck`, async () => {
+      const chat = await chatHarness(async () => {
+        if (httpError) throw new ApiError(503, { code });
+        return { clientRequestId: 'original-id', status: 'FAILED', failureCode: code, utterances: [] };
+      }, () => ({ clientRequestId: 'original-id', status: 'SUCCEEDED', failureCode: null, utterances: [{ characterKey: 'JOY', content: '답변' }] }));
+      await chat.send();
+      assert.equal(chat.storage.get('pendingChat.user.home').content, '보낸 문장');
+      assert.equal(chat.queries.length, 0);
+      assert.equal(chat.render().find((node) => node.type === 'input').props.disabled, true);
+      await chat.render().find((node) => node.props?.label === '결과 다시 확인').props.onPress();
+      assert.deepEqual(chat.queries, ['original-id']);
+      assert.equal(chat.requests.length, 1);
+      assert.equal(chat.storage.get('pendingChat.user.home'), null);
+      assert.equal(chat.render().find((node) => node.type === 'input').props.disabled, false);
+      chat.cleanup();
+    });
+  }
+}
+
+function studyStartHarness(clock, storage, post, current = async () => ({ studySession: null })) {
+  let serial = 0;
+  return load('src/services/studyStart.ts', {
+    '@/services/backend': { newClientRequestId: () => 'start-' + (++serial), startStudySession: post, getCurrentStudySession: current },
+    '@/services/chatRecovery': recovery(async () => null, clock), '@/utils/api': { ApiError },
+    '@/utils/preferences': {
+      readPreference: async (key, fallback) => storage.get(key) ?? fallback,
+      writePreference: async (key, value) => storage.set(key, JSON.parse(JSON.stringify(value))),
+    },
+  }, clock.globals);
+}
+
+test('study start retries, duplicate taps and an app restart preserve the exact original ID and task', async () => {
+  const clock = new Clock(), storage = new Map(), requests = [];
+  const service = studyStartHarness(clock, storage, async (input) => { requests.push(JSON.stringify(input)); throw new ApiError(0); });
+  const first = service.startOrRecoverStudy('user', 'math');
+  assert.equal(first, service.startOrRecoverStudy('user', 'other-task'));
+  const failed = assert.rejects(first);
+  await clock.advance(2000); await failed;
+  assert.equal(requests.length, 3);
+  assert.ok(requests.every((body) => body === requests[0]));
+  const restarted = studyStartHarness(clock, storage, async (input) => { requests.push(JSON.stringify(input)); return { id: 'existing-room', status: 'STUDYING' }; });
+  assert.equal((await restarted.startOrRecoverStudy('user', 'other-task')).id, 'existing-room');
+  assert.equal(requests[3], requests[0]);
+  assert.equal(storage.get('pendingStudyStart.user'), null);
+});
+
+test('ACTIVE_STUDY_EXISTS recovers the currently open room', async () => {
+  const clock = new Clock(), storage = new Map();
+  const room = { id: 'open-room', status: 'PAUSED' };
+  const service = studyStartHarness(clock, storage, async () => { throw new ApiError(409, { code: 'ACTIVE_STUDY_EXISTS' }); }, async () => ({ studySession: room }));
+  assert.equal(await service.startOrRecoverStudy('user', 'math'), room);
+  assert.equal(storage.get('pendingStudyStart.user'), null);
+});
+
+test('logout cancels study start retries before an account can change', async () => {
+  const clock = new Clock(), storage = new Map();
+  let posts = 0;
+  const service = studyStartHarness(clock, storage, async () => { posts++; throw new ApiError(0); });
+  const operation = service.startOrRecoverStudy('user', 'math');
+  const failure = assert.rejects(operation, /중단/);
+  await flush(); service.cancelPendingStudyStart('user');
+  await clock.advance(2000); await failure;
+  assert.equal(posts, 1);
+});
+
+test('the timer sums prior task time and current session time without doubling on pause/resume', async () => {
+  const clock = new Clock(); clock.now = 10000;
+  const dto = { id: 'session', taskId: 'math', status: 'STUDYING', studySeconds: 120, priorTaskStudySeconds: 600, version: 0 };
+  const service = load('src/hooks/useStudySession.ts', {
+    react: { useSyncExternalStore: (_, snapshot) => snapshot(), useState: (initial) => [initial()], useEffect() {} },
+    '@/services/backend': { changeStudySession: async (_, action) => ({ ...dto, studySeconds: 125, status: action === 'PAUSE' ? 'PAUSED' : 'STUDYING' }) },
+    '@/services/studyStart': {}, '@/utils/api': { ApiError },
+  }, clock.globals);
+  service.studyActions.restore(dto);
+  assert.equal(service.formatElapsed(service.useElapsed()), '00:12:00');
+  clock.now += 5000;
+  assert.equal(service.formatElapsed(service.useElapsed()), '00:12:05');
+  await service.studyActions.pause();
+  assert.equal(service.formatElapsed(service.useElapsed()), '00:12:05');
+  await service.studyActions.resume();
+  assert.equal(service.formatElapsed(service.useElapsed()), '00:12:05');
+  service.studyActions.restore({ ...dto, priorTaskStudySeconds: undefined });
+  assert.equal(service.formatElapsed(service.useElapsed()), '00:02:00');
+});
+
+test('server logout uses the existing bearer and sends no request body', async () => {
+  const calls = [];
+  const service = backend(async (path, options) => { calls.push([path, options]); }, new Clock());
+  await service.logoutSession();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'auth/logout');
+  assert.equal(calls[0][1].method, 'POST');
+  assert.equal(calls[0][1].headers.Authorization, 'Bearer test');
+  assert.equal('body' in calls[0][1], false);
+});
+
+test('logout revokes the token before local cleanup and keeps credentials when the server is unreachable', async () => {
+  const events = [];
+  let unavailable = true;
+  const service = load('src/mocks/store.ts', {
+    react: { useSyncExternalStore: (_, snapshot) => snapshot() },
+    '@/services/backend': { logoutSession: async () => { events.push('server'); if (unavailable) throw new ApiError(0); } },
+    '@/services/studyPresence': { unregisterCurrentPushDevice: async () => events.push('unregister') },
+    '@/services/studyStart': {}, '@/utils/api': { ApiError }, '@/utils/preferences': {},
+    '@/utils/token': { readAccessToken: async () => 'token', clearAccessToken: async () => events.push('clear') },
+    '@/services/localNotifications': { cancelAllStartReminders: async () => events.push('cancel-local') },
+    '@/hooks/useStudySession': { reset: () => {}, studyActions: { reset: () => events.push('reset-study') } },
+  });
+  await assert.rejects(service.authActions.logout());
+  assert.deepEqual(events, ['unregister', 'server']);
+  unavailable = false; events.length = 0;
+  await service.authActions.logout();
+  assert.deepEqual(events, ['unregister', 'server', 'cancel-local', 'clear', 'reset-study']);
+  assert.equal(service.useMockStore().loggedIn, false);
+});
+
+test('leaving without an alarm after END succeeds navigates home without retrying the failed reservation', async () => {
+  const hooks = hookHarness();
+  let session = { sessionId: 'session', status: 'study' }, draft = null, reservations = 0, ends = 0, exits = 0, cancels = 0;
+  const mocks = {
+    react: hooks.react, 'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': { View: 'view', Text: 'text', StyleSheet: { create: (value) => value }, Platform: { OS: 'android' } },
+    'expo-router': { router: { dismissTo: () => { exits++; } } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0 }) }, '@/constants/theme': { colors: {}, fonts: {}, fontSize: {} },
+    '@/hooks/useStudySession': {
+      useStudySession: () => session,
+      studyActions: { end: async () => { ends++; session = { status: 'idle' }; return { id: 'session' }; } },
+    },
+    '@/mocks/store': {
+      useMockStore: () => ({ tasks: [], userId: 'user' }),
+      reminderActions: {
+        setFromSession: async () => { reservations++; throw new ApiError(503); },
+        cancelForSession: () => { cancels++; return new Promise(() => {}); },
+      },
+    },
+    '@/services/reminderDraft': { readReminderDraft: async () => draft, saveReminderDraft: async (_, value) => { draft = value; } },
+    '@/utils/alert': { showAlert() {} }, '@/utils/date': { formatReminder: (value) => value },
+  };
+  for (const name of ['@/components/common/DateTimeSheet', '@/components/common/Button',
+    ...['CharacterTile', 'ExitSheet', 'MyTile', 'NextAlarmSheet', 'StudyBottomBar', 'TimerPill'].map((name) => '@/features/study/' + name)]) mocks[name] = { __esModule: true, default: name };
+  const screen = load('src/app/study/index.tsx', mocks).default;
+  const render = () => nodes(hooks.render(screen));
+  render(); hooks.effects[0](); await flush();
+  await render().find((node) => node.type === '@/features/study/NextAlarmSheet').props.onExit(new Date(Date.now() + 1800000).toISOString());
+  assert.equal(session.status, 'idle');
+  assert.equal(ends, 1); assert.equal(reservations, 1); assert.equal(exits, 0);
+  await render().find((node) => node.props?.label === '알림 없이 나가기').props.onPress();
+  assert.equal(exits, 1); assert.equal(reservations, 1); assert.equal(ends, 1);
+  assert.equal(cancels, 1); assert.equal(draft, null); assert.equal(session.status, 'idle');
 });

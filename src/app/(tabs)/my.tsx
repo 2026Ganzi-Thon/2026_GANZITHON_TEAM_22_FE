@@ -1,10 +1,11 @@
 // MY-01 내 정보
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CroppedImage from '@/components/common/CroppedImage';
+import Button from '@/components/common/Button';
 import ErrorView from '@/components/common/ErrorView';
 import LoadingView from '@/components/common/LoadingView';
 import Toggle from '@/components/common/Toggle';
@@ -17,7 +18,7 @@ import {
   requestLocalNotificationPermission,
   scheduleStartReminder,
 } from '@/services/localNotifications';
-import { useMockStore } from '@/mocks/store';
+import { authActions, useMockStore } from '@/mocks/store';
 import { writePreference } from '@/utils/preferences';
 import { showAlert } from '@/utils/alert';
 import { syncPushRegistration, unregisterCurrentPushDevice } from '@/services/studyPresence';
@@ -33,6 +34,8 @@ export default function MyScreen() {
   const [profileAttempt, setProfileAttempt] = useState(0);
   const [notify, setNotify] = useState(false);
   const [notifyLoading, setNotifyLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const actionBusy = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -67,7 +70,9 @@ export default function MyScreen() {
   }, []);
 
   const changeNotificationSetting = async (enabled: boolean) => {
-    if (notifyLoading) return;
+    if (notifyLoading || actionBusy.current) return;
+    actionBusy.current = true;
+    setNotifyLoading(true);
     try {
       if (enabled) {
         const granted = await requestLocalNotificationPermission();
@@ -86,10 +91,22 @@ export default function MyScreen() {
       setNotify(enabled);
     } catch (error) {
       showAlert('알림 설정을 바꾸지 못했어', error instanceof Error ? error.message : '다시 시도해줘.');
+    } finally {
+      actionBusy.current = false;
+      setNotifyLoading(false);
     }
   };
 
   const isGuest = profile?.accountType.toUpperCase().includes('GUEST') ?? false;
+  const logout = async () => {
+    if (actionBusy.current || notifyLoading) return;
+    actionBusy.current = true;
+    setLoggingOut(true);
+    try { await authActions.logout(); }
+    catch (error) {
+      showAlert('로그아웃하지 못했어', error instanceof Error ? error.message : '연결 상태를 확인하고 다시 시도해줘.');
+    } finally { actionBusy.current = false; setLoggingOut(false); }
+  };
   const profileName = profile?.email ?? (isGuest ? '게스트 계정' : '사용자');
   const profileDescription = profile?.email
     ? (profile.emailVerified ? '이메일 인증 완료' : '이메일 계정')
@@ -124,15 +141,19 @@ export default function MyScreen() {
           value={notify}
           onChange={(value) => { void changeNotificationSetting(value); }}
           accessibilityLabel="기기 공부 알림"
-          disabled={notifyLoading || Platform.OS === 'web'}
+          disabled={notifyLoading || loggingOut || Platform.OS === 'web'}
         />
       </View>
       {Platform.OS === 'web' && <Text style={styles.note}>기기 알림은 앱을 설치한 휴대폰에서 설정할 수 있어.</Text>}
+      <View style={styles.logout}>
+        <Button label={loggingOut ? '로그아웃 중…' : '로그아웃'} size="md" variant="outline" disabled={loggingOut || notifyLoading} onPress={logout} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  logout: { marginTop: 24, paddingHorizontal: 30 },
   screen: {
     flex: 1,
     backgroundColor: colors.background,

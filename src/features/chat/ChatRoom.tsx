@@ -8,10 +8,11 @@ import { CHARACTER_IDS, type CharacterId } from '@/constants/characters';
 import { colors, fonts } from '@/constants/theme';
 import { useMockStore } from '@/mocks/store';
 import { createExchange, getChatHistory, getChatUsage, newClientRequestId, type ExchangeRequest, type ChatHistoryItemDTO, type ExchangeDTO, type ExchangeUtteranceDTO } from '@/services/backend';
-import { apiErrorCode, needsChatRecovery, pollExchange } from '@/services/chatRecovery';
+import { apiErrorCode, needsChatRecovery, needsChatResultRecheck, pollExchange } from '@/services/chatRecovery';
 import type { ChatMessage } from '@/types/chat';
 import { readPreference, writePreference } from '@/utils/preferences';
 import { showAlert } from '@/utils/alert';
+import { ApiError } from '@/utils/api';
 
 type Props = { bottomInset?: number; studySessionId?: string; characterKeys?: CharacterId[] };
 
@@ -39,8 +40,10 @@ function messagesFromHistory(exchange: ChatHistoryItemDTO): ChatMessage[] {
 }
 
 function errorMessage(error: unknown) {
+  if (apiErrorCode(error) === 'CHAT_SAFETY_SUPPORT' && error instanceof ApiError
+    && error.body && typeof error.body === 'object' && 'message' in error.body) return String(error.body.message);
   return apiErrorCode(error) === 'CHAT_NOT_CONFIGURED'
-    ? '서버에서 AI 답변을 준비 중이야.'
+    ? '지금은 캐릭터 대화를 이용할 수 없어. 스터디룸에서 공부는 계속할 수 있어.'
     : error instanceof Error ? error.message : '잠시 후 다시 시도해줘.';
 }
 
@@ -64,6 +67,11 @@ function ChatConversation({ userId, bottomInset = 0, studySessionId, characterKe
 
   const finish = useCallback(async (request: ExchangeRequest, exchange: ExchangeDTO, signal: AbortSignal) => {
     if (signal.aborted) return;
+    if (needsChatResultRecheck(exchange.failureCode)) {
+      setPendingRequest(request);
+      setSendError('답변 결과를 저장했는지 확인하지 못했어. 결과 다시 확인을 눌러줘.');
+      return;
+    }
     await writePreference(storageKey, null);
     if (signal.aborted) return;
     previousRequestId.current = exchange.status === 'SUCCEEDED' && !exchange.failureCode ? exchange.clientRequestId : null;
@@ -81,7 +89,7 @@ function ChatConversation({ userId, bottomInset = 0, studySessionId, characterKe
     try {
       const exchange = await pollExchange(request.clientRequestId, signal);
       if (exchange) await finish(request, exchange, signal);
-      else if (!signal.aborted) setSendError('답변 결과를 아직 확인하지 못했어. 같은 요청을 다시 확인해줘.');
+      else if (!signal.aborted) setSendError('답변 결과를 아직 확인하지 못했어. 결과 다시 확인을 눌러줘.');
     } catch (error) {
       if (!signal.aborted) setSendError(errorMessage(error));
     }
@@ -149,7 +157,9 @@ function ChatConversation({ userId, bottomInset = 0, studySessionId, characterKe
         else await checkResult(request, signal);
       } catch (error) {
         if (signal.aborted) return;
-        if (needsChatRecovery(error)) await checkResult(request, signal);
+        if (needsChatResultRecheck(apiErrorCode(error))) {
+          setSendError('답변 결과를 저장했는지 확인하지 못했어. 결과 다시 확인을 눌러줘.');
+        } else if (needsChatRecovery(error)) await checkResult(request, signal);
         else {
           await writePreference(storageKey, null);
           setPendingRequest(null);
@@ -191,7 +201,7 @@ function ChatConversation({ userId, bottomInset = 0, studySessionId, characterKe
         contentContainerStyle={styles.list}
       />
       {sendError && <Text accessibilityRole="alert" style={styles.sendError}>{sendError}</Text>}
-      {pendingRequest && !busy && <Button label="다시 확인" size="md" variant="outline" onPress={recheck} />}
+      {pendingRequest && !busy && <Button label="결과 다시 확인" size="md" variant="outline" onPress={recheck} />}
       <ChatInput onSend={send} disabled={loadingHistory || busy || Boolean(pendingRequest)} />
       <View style={{ height: bottomInset + 12 }} />
     </KeyboardAvoidingView>

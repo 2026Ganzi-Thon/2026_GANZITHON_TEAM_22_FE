@@ -1,7 +1,7 @@
 // ST-01 함께 시작하기
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,30 +14,46 @@ import { cancelStartReminder } from '@/services/localNotifications';
 import { isDone } from '@/types/task';
 import { formatDday, formatMonthDay } from '@/utils/date';
 import { showAlert } from '@/utils/alert';
+import { readPendingStudyStart } from '@/services/studyStart';
+import type { StudyStartRequest } from '@/services/backend';
 
 const HERO_HEIGHT = 475;
 
 export default function StudyStartScreen() {
   const insets = useSafeAreaInsets();
-  const { tasks, reminder } = useMockStore();
+  const { tasks, reminder, userId } = useMockStore();
   const incompleteTasks = tasks.filter((t) => !isDone(t));
   const [selectedId, setSelectedId] = useState<string>();
   const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const [pending, setPending] = useState<StudyStartRequest | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (!userId) return;
+    readPendingStudyStart(userId).then((saved) => {
+      if (active) { setPending(saved); if (saved) setSelectedId(saved.taskId ?? undefined); }
+    }).catch(() => undefined).finally(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, [userId]);
   // 할 일이 적어도 그림 아래 빈 곳이 없게 시트를 그림 끝까지 늘린다
   const { height } = useWindowDimensions();
 
   // 할 일 선택 없이도 시작할 수 있다 (명세 ST-01)
   const start = async (taskId?: string) => {
-    if (starting) return;
+    if (startingRef.current || !loaded || !userId) return;
+    startingRef.current = true;
     setStarting(true);
     try {
-      await studyActions.start(taskId);
+      await studyActions.start(taskId, userId);
       if (reminder) await cancelStartReminder(reminder.id).catch(() => undefined);
       await reminderActions.refresh().catch(() => undefined);
       router.replace('/study');
     } catch (error) {
+      setPending(await readPendingStudyStart(userId).catch(() => null));
       showAlert('공부를 시작하지 못했어', error instanceof Error ? error.message : '잠시 후 다시 시도해줘.');
     } finally {
+      startingRef.current = false;
       setStarting(false);
     }
   };
@@ -67,6 +83,7 @@ export default function StudyStartScreen() {
                 key={task.id}
                 accessibilityRole="radio"
                 accessibilityState={{ selected }}
+                disabled={starting || Boolean(pending)}
                 onPress={() => setSelectedId(selected ? undefined : task.id)}
                 style={styles.item}>
                 <View style={[styles.radio, selected && styles.radioOn]} />
@@ -79,8 +96,13 @@ export default function StudyStartScreen() {
             );
           })}
         </ScrollView>
-        <Button label="바로 시작하자!" size="md" disabled={!selectedId || starting} onPress={() => start(selectedId)} />
-        <Button label="선택 없이 시작하자!" size="md" variant="outline" disabled={starting} onPress={() => start()} />
+        {pending ? <>
+          <Text style={styles.empty}>이전 공부 시작 요청을 같은 내용으로 다시 확인할게.</Text>
+          <Button label="같은 요청으로 다시 시작" size="md" disabled={starting || !loaded} onPress={() => start()} />
+        </> : <>
+          <Button label="바로 시작하자!" size="md" disabled={!selectedId || starting || !loaded} onPress={() => start(selectedId)} />
+          <Button label="선택 없이 시작하자!" size="md" variant="outline" disabled={starting || !loaded} onPress={() => start()} />
+        </>}
       </View>
     </View>
   );

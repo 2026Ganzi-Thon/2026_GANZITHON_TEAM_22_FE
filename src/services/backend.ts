@@ -52,6 +52,7 @@ export type StudyDTO = {
   endedAt: string | null;
   endReason: string | null;
   studySeconds: number;
+  priorTaskStudySeconds?: number;
   runningStartedAt: string | null;
   startRequestId: string;
   version: number;
@@ -92,6 +93,12 @@ export async function loginEmail(email: string, password: string) {
   });
   await writeAccessToken(session.accessToken);
   return session;
+}
+
+export async function logoutSession() {
+  const token = await readAccessToken();
+  if (!token) return;
+  await apiRequest<void>('auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
 }
 
 export async function restoreSavedSession() {
@@ -146,10 +153,11 @@ export function newClientRequestId() {
   });
 }
 
-export const startStudySession = (taskId?: string | null) =>
+export type StudyStartRequest = { clientRequestId: string; taskId: string | null };
+export const startStudySession = (input: StudyStartRequest) =>
   request<StudyDTO>('study-sessions', {
     method: 'POST',
-    body: JSON.stringify({ clientRequestId: newClientRequestId(), taskId: taskId ?? null }),
+    body: JSON.stringify(input),
   });
 
 export const getCurrentStudySession = () =>

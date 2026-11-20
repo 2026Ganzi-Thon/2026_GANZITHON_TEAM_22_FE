@@ -29,7 +29,8 @@ export default function StudyRoomScreen() {
   const [sheet, setSheet] = useState<Sheet>('none');
   const leaving = useRef(false);
   const endedSessionId = useRef<string | undefined>(undefined);
-  const resting = session.status === 'rest';
+  const ended = session.status === 'idle';
+  const resting = session.status !== 'study';
   const [draft, setDraft] = useState<ReminderDraft | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,12 +77,22 @@ export default function StudyRoomScreen() {
         const ended = await studyActions.end();
         endedSessionId.current = ended?.id;
       }
+      if (!remindAt) {
+        // Leaving must not depend on the reminder service being available, or create another reservation.
+        setDraft(null);
+        setSheet('none');
+        router.dismissTo('/');
+        void saveReminderDraft(userId, null).catch(() => undefined);
+        if (request) void reminderActions.cancelForSession(request.sessionId).catch(() => {
+          showAlert('예약 취소를 확인하지 못했어', '연결 상태가 좋아지면 홈에서 알림 예약 상태를 확인해줘.');
+        });
+        return;
+      }
       if (request) {
         const result = await reminderActions.setFromSession(
           request.sessionId, request.remindAt, request.timeZone,
         );
-        if (!remindAt && result.reminder) await reminderActions.cancel();
-        else if (result.reminder && !result.scheduled && Platform.OS !== 'web') {
+        if (result.reminder && !result.scheduled && Platform.OS !== 'web') {
           showAlert('알림을 저장했어', '기기 알림 권한을 허용하면 잠금 화면에서 받을 수 있어.');
         } else if (remindAt && !result.reminder) {
           showAlert('예약 상태를 확인했어', '이미 취소되었거나 만료된 예약이야.');
@@ -117,9 +128,9 @@ export default function StudyRoomScreen() {
           <Text style={styles.title} numberOfLines={1}>
             {task?.title ?? '함께 공부'}
           </Text>
-          <Text style={styles.subtitle}>{resting ? '잠깐 쉬는 중...' : '같이 공부하는 중...'}</Text>
+          <Text style={styles.subtitle}>{ended ? '공부를 마쳤어' : resting ? '잠깐 쉬는 중...' : '같이 공부하는 중...'}</Text>
         </View>
-        <TimerPill />
+        {!ended && <TimerPill />}
       </View>
 
       <View style={styles.grid}>
