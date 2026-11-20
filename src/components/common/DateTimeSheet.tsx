@@ -16,6 +16,8 @@ type Props = {
   confirmLabel: string;
   initial?: string;
   includeTime?: boolean;
+  /** 지금부터 며칠 안의 미래 시각만 고를 수 있게 한다 (다음 시작 알림은 서버 규칙상 7일) */
+  maxDays?: number;
   onConfirm: (iso: string) => void;
 };
 
@@ -31,7 +33,10 @@ export default function DateTimeSheet({ visible, onClose, ...rest }: Props) {
   );
 }
 
-function Picker({ title, subtitle, confirmLabel, initial, includeTime = true, onConfirm }: Omit<Props, 'visible' | 'onClose'>) {
+function Picker({ title, subtitle, confirmLabel, initial, includeTime = true, maxDays, onConfirm }: Omit<Props, 'visible' | 'onClose'>) {
+  const [now] = useState(() => new Date());
+  const maxDate = maxDays ? new Date(now.getTime() + maxDays * 24 * 60 * 60 * 1000) : undefined;
+  const [error, setError] = useState<string | null>(null);
   const [date, setDate] = useState(() => (initial ? new Date(initial) : new Date()));
   const [month, setMonth] = useState(() => new Date(date.getFullYear(), date.getMonth(), 1));
   const [hourText, setHourText] = useState(pad(date.getHours() % 12 || 12));
@@ -53,7 +58,15 @@ function Picker({ title, subtitle, confirmLabel, initial, includeTime = true, on
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       <Text style={styles.title}>{title}</Text>
 
-      <Calendar month={month} selected={date} onChangeMonth={setMonth} onSelect={setDate} />
+      {maxDays && <Text style={styles.hint}>앞으로 {maxDays}일 안의 시간을 골라줘</Text>}
+      <Calendar
+        month={month}
+        selected={date}
+        onChangeMonth={setMonth}
+        onSelect={(day) => { setDate(day); setError(null); }}
+        minDate={maxDays ? now : undefined}
+        maxDate={maxDate}
+      />
 
       {includeTime && (
         <>
@@ -84,7 +97,18 @@ function Picker({ title, subtitle, confirmLabel, initial, includeTime = true, on
       <View style={styles.summary}>
         <Text style={styles.pillText}>{includeTime ? formatKoreanDateTime(result.toISOString()) : formatKoreanDate(result.toISOString())}</Text>
       </View>
-      <Pressable accessibilityRole="button" onPress={() => onConfirm(result.toISOString())} style={styles.confirm}>
+      {error && <Text style={styles.error}>{error}</Text>}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => {
+          if (maxDate && (result.getTime() <= Date.now() || result.getTime() > maxDate.getTime())) {
+            setError(`지금부터 ${maxDays}일 안의 미래 시간을 골라줘.`);
+            return;
+          }
+          onConfirm(result.toISOString());
+        }}
+        style={styles.confirm}
+      >
         <Text style={styles.confirmText}>{confirmLabel}</Text>
       </Pressable>
     </>
@@ -104,6 +128,21 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
     letterSpacing: -1.4,
     color: colors.text,
+    textAlign: 'center',
+  },
+  hint: {
+    marginTop: -10,
+    marginBottom: 10,
+    fontFamily: fonts.body,
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  error: {
+    marginTop: 8,
+    fontFamily: fonts.bodySemiBold,
+    fontSize: fontSize.sm,
+    color: colors.primary,
     textAlign: 'center',
   },
   label: {

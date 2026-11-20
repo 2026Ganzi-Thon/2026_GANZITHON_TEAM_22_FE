@@ -170,6 +170,7 @@ export default function StudyRoomScreen() {
         subtitle="직접 설정하기"
         title="언제 다시 만날까?"
         confirmLabel="이 시간에 만나"
+        maxDays={7}
         onConfirm={leave}
       />
     </View>

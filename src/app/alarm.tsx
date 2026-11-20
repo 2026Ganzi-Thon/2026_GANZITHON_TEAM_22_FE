@@ -45,6 +45,7 @@ function AlarmSettings() {
         subtitle="직접 설정하기"
         title="언제 다시 만날까?"
         confirmLabel="이 시간에 만나"
+        maxDays={7}
         initial={reminder?.remindAt}
         onConfirm={(iso) => {
           reminderActions.update(iso, Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul')

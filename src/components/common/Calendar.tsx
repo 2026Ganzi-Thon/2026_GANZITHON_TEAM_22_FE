@@ -13,6 +13,9 @@ type Props = {
   selected: Date;
   onChangeMonth: (month: Date) => void;
   onSelect: (day: Date) => void;
+  /** 이 날짜 이전·이후는 흐리게 하고 누를 수 없다 (날짜 단위) */
+  minDate?: Date;
+  maxDate?: Date;
 };
 
 // 월요일 시작 달력. 이전·다음 달 날짜는 흐리게
@@ -30,8 +33,9 @@ function buildCells(month: Date) {
 }
 
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-export default function Calendar({ month, selected, onChangeMonth, onSelect }: Props) {
+export default function Calendar({ month, selected, onChangeMonth, onSelect, minDate, maxDate }: Props) {
   const cells = buildCells(month);
   const move = (diff: number) => onChangeMonth(new Date(month.getFullYear(), month.getMonth() + diff, 1));
 
@@ -61,10 +65,11 @@ export default function Calendar({ month, selected, onChangeMonth, onSelect }: P
         {cells.map((d) => {
           const inMonth = d.getMonth() === month.getMonth();
           const isSelected = sameDay(d, selected);
+          const disabled = (minDate && dayStart(d) < dayStart(minDate)) || (maxDate && dayStart(d) > dayStart(maxDate));
           return (
-            <Pressable key={d.toISOString()} onPress={() => onSelect(d)} style={styles.cell}>
+            <Pressable key={d.toISOString()} disabled={!!disabled} onPress={() => onSelect(d)} style={styles.cell}>
               <View style={[styles.dayCircle, isSelected && styles.selected]}>
-                <Text style={[styles.cellText, !inMonth && styles.outside, isSelected && styles.selectedText]}>
+                <Text style={[styles.cellText, !inMonth && styles.outside, disabled && styles.disabled, isSelected && styles.selectedText]}>
                   {d.getDate()}
                 </Text>
               </View>
@@ -134,6 +139,9 @@ const styles = StyleSheet.create({
   },
   outside: {
     opacity: 0.4,
+  },
+  disabled: {
+    opacity: 0.2,
   },
   selected: {
     backgroundColor: colors.primary,
